@@ -1,0 +1,128 @@
+name: airdrop_app
+description: A premium iOS 18-style AirDrop Flutter application with advanced glassmorphism and animations.
+
+publish_to: 'none'
+
+version: 1.0.0+1
+
+environment:
+  sdk: ^3.5.0
+
+dependencies:
+  flutter:
+    sdk: flutter
+  flutter_localizations:
+    sdk: flutter
+  cupertino_icons: ^1.0.6
+  flutter_riverpod: ^2.5.1
+  intl: ^0.20.2
+  # Networking & P2P
+  flutter_webrtc: ^0.12.4
+  connectivity_plus: ^6.1.2
+  network_info_plus: ^6.0.2
+  device_info_plus: ^11.2.0
+  # BLE and QR
+  flutter_blue_plus: ^1.36.7
+  mobile_scanner: ^6.0.2
+  qr_flutter: ^4.1.0
+  # File picker
+  file_picker: ^8.1.6
+  # Storage & DB
+  path_provider: ^2.1.5
+  sqflite: ^2.4.1
+  sqflite_common_ffi: ^2.3.4
+  shared_preferences: ^2.3.3
+  drift: ^2.22.0
+  sqlite3_flutter_libs: ^0.5.27
+  path: ^1.9.1
+  path_provider_windows: ^2.2.1
+  # Permissions & logging
+  permission_handler: ^11.3.1
+  logger: ^2.5.0
+  # Crypto
+  pointycastle: ^3.9.1
+  crypto: ^3.0.6
+  encrypt: ^5.0.3
+  # UI/Animation
+  lottie: ^3.2.0
+  # Compression & Auth
+  archive: ^3.6.1
+  local_auth: ^2.3.0
+  # Audio
+  audioplayers: ^6.1.0
+  # Additional packages
+  battery_plus: ^6.0.3
+  multicast_dns: ^0.3.2+7
+  # nfc_manager: ^3.5.0  # Temporarily disabled due to Kotlin compatibility
+  uuid: ^4.5.1
+  url_launcher: ^6.3.1
+  # Charts and visualizations
+  fl_chart: ^0.69.0
+  # Fonts
+  google_fonts: ^6.2.1
+  # Image processing
+  flutter_image_compress: ^2.3.0
+  video_thumbnail: ^0.5.3
+  # WiFi Direct & Advanced Networking (commented out - platform specific)
+  # wifi_iot: ^0.3.18
+  # Bluetooth Classic & Mesh (commented out - platform specific)
+  # flutter_bluetooth_serial: ^0.4.0
+  # Enhanced Compression
+  # brotli: ^0.3.1  # Not available
+  # Advanced Crypto & Security
+  cryptography: ^2.5.0
+  # Biometric Authentication (already have local_auth)
+  # local_auth_android: ^1.0.44
+  # local_auth_darwin: ^1.4.1
+  # Performance & Concurrency
+  synchronized: ^3.3.0+3
+  pool: ^1.5.1
+  # Analytics & Monitoring
+  # sentry_flutter: ^8.11.0  # Optional
+  # Advanced Image Processing
+  image: ^4.3.0
+  # Clipboard Management
+  # clipboard: ^0.1.3  # Use flutter Clipboard instead
+  # Background Services (removed - build conflict)
+  # workmanager: ^0.5.2
+  # Advanced Permissions
+  app_settings: ^5.1.1
+  # HTTP Client for API
+  dio: ^5.7.0
+  # JSON Serialization
+  json_annotation: ^4.9.0
+  # State Management Enhancement
+  hooks_riverpod: ^2.5.2
+  # Animations
+  rive: ^0.13.15
+  shimmer: ^3.0.0
+  # Video Player
+  video_player: ^2.9.2
+  # Audio Recording (removed - build conflict)
+  # record: ^5.1.2
+  # Screenshot Detection (platform specific)
+  # screenshot_callback: ^3.0.0
+  
+dev_dependencies:
+  flutter_test:
+    sdk: flutter
+  flutter_lints: ^5.0.0
+  build_runner: ^2.4.14
+  drift_dev: ^2.22.0
+  json_serializable: ^6.8.0
+  mockito: ^5.4.4
+
+flutter:
+  uses-material-design: true
+
+  # Assets
+  assets:
+    - assets/images/
+
+  # Fonts will be added later
+  # fonts:
+  #   - family: SF Pro Display
+  #     fonts:
+  #       - asset: assets/fonts/SFProDisplay-Regular.otf
+  #       - asset: assets/fonts/SFProDisplay-Bold.otf
+  #         weight: 700

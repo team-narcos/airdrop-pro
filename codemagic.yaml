@@ -1,0 +1,38 @@
+workflows:
+  ios-workflow:
+    name: iOS AirDrop App
+    instance_type: mac_mini_m1
+    max_build_duration: 60
+    
+    environment:
+      flutter: 3.35.6
+      xcode: latest
+      cocoapods: default
+    
+    cache:
+      cache_paths:
+        - $FLUTTER_ROOT/.pub-cache
+        - $HOME/Library/Caches/CocoaPods
+    
+    scripts:
+      - name: Get Flutter packages
+        script: flutter pub get
+      
+      - name: Build iOS (unsigned)
+        script: |
+          flutter build ios --release --no-codesign
+      
+      - name: Create IPA
+        script: |
+          mkdir -p Payload
+          cp -r build/ios/iphoneos/Runner.app Payload/
+          zip -r airdrop-app-unsigned.ipa Payload
+    
+    artifacts:
+      - airdrop-app-unsigned.ipa
+      - build/ios/iphoneos/Runner.app
+    
+    publishing:
+      email:
+        recipients:
+          - your-email@example.com  # Replace with your email

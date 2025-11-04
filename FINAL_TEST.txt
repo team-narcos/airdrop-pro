@@ -1,0 +1,107 @@
+================================================================
+FINAL TEST - Detailed Logging Version
+================================================================
+
+NEW APK WITH COMPREHENSIVE LOGGING:
+-----------------------------------
+C:\Users\Abhijeet Nardele\Projects\my-app\build\app\outputs\flutter-apk\app-arm64-v8a-release.apk
+
+WHAT'S NEW:
+-----------
+- Added step-by-step logging with checkmarks (✓) for success
+- Added error markers (✗✗✗) for failures  
+- Added timeout detection (5 minutes max per transfer)
+- Logs every stage: connection → metadata → file data → disk write
+
+INSTALL ON BOTH DEVICES:
+-------------------------
+1. Uninstall old version on BOTH devices
+2. Install THIS NEW APK on BOTH devices
+3. Connect both to same WiFi
+
+TEST PROCEDURE:
+===============
+
+TEST 1: "Allow Everyone" is OFF
+--------------------------------
+1. Device B: Go to Settings → Turn OFF "Allow Everyone"
+2. Connect Device B to PC via USB
+3. On PC, run in PowerShell:
+   adb logcat -c
+   adb logcat | Select-String "TCP Transfer"
+
+4. Device A: Send a small image to Device B
+5. Watch the logs carefully
+
+EXPECTED LOGS (Allow Everyone OFF):
+-----------------------------------
+[TCP Transfer] ===== NEW CLIENT CONNECTION =====
+[TCP Transfer] Client IP: 192.168.x.x
+[TCP Transfer] Client Port: xxxxx
+[TCP Transfer] Step 1: Reading metadata length (4 bytes)...
+[TCP Transfer] ✓ Metadata length: 123 bytes
+[TCP Transfer] Step 2: Reading metadata (123 bytes)...
+[TCP Transfer] ✓ Metadata JSON: {"fileName":"test.jpg","fileSize":12345,...}
+[TCP Transfer] ✓ Metadata parsed successfully
+[TCP Transfer] Metadata - fileName: test.jpg, fileSize: 12345 bytes
+[TCP Transfer] Step 3: Ready to receive file data
+[TCP Transfer] Waiting for 12345 bytes of file data...
+[TCP Transfer] ✓ Received all 12345 bytes!
+[TCP Transfer] Writing to disk...
+[TCP Transfer] ✓ File written and flushed to disk
+[TCP Transfer] File size on disk: 12345 bytes
+[TCP Transfer] ===== FILE RECEIVED SUCCESSFULLY =====
+[TCP Transfer] File: test.jpg
+[TCP Transfer] Size: 12345 bytes
+[TCP Transfer] Path: /storage/emulated/0/Android/data/.../ReceivedFiles/test.jpg
+[TCP Transfer] Closing client connection
+[TCP Transfer] ===== CONNECTION CLOSED =====
+
+TEST 2: "Allow Everyone" is ON
+-------------------------------
+1. Device B: Go to Settings → Turn ON "Allow Everyone"
+2. Keep adb logcat running
+3. Device A: Send another file to Device B
+4. Watch the logs
+
+TROUBLESHOOTING:
+================
+
+IF YOU SEE: "✗ TIMEOUT waiting for file data!"
+-----------------------------------------------
+- Sender is not sending data after metadata
+- Check sender device logs for errors
+- Try smaller file (under 1MB)
+
+IF YOU SEE: "✗✗✗ ERROR HANDLING CLIENT ✗✗✗"
+---------------------------------------------
+- Something crashed during transfer
+- Share the full error message and stack trace
+
+IF LOGS STOP AT "Step 1" or "Step 2":
+--------------------------------------
+- Network connection lost
+- Protocol mismatch (old APK on sender?)
+- Firewall blocking
+
+IF FILE RECEIVED but NOT IN UI:
+--------------------------------
+- Check if file exists:
+  adb shell ls -la /storage/emulated/0/Android/data/com.example.airdrop/files/ReceivedFiles/
+- If file exists, it's a UI refresh issue
+- If file doesn't exist, transfer failed
+
+IMPORTANT NOTES:
+----------------
+1. The "Allow Everyone" setting currently does NOTHING in the code
+2. Files should be accepted regardless of this setting
+3. If behavior differs, something else is causing it
+4. The detailed logs will show us exactly where it fails
+
+SHARE WITH ME:
+--------------
+1. Complete logcat output for BOTH tests (Allow Everyone ON and OFF)
+2. Screenshots of what you see in the app UI
+3. Result of: adb shell ls -la /storage/emulated/0/Android/data/com.example.airdrop/files/ReceivedFiles/
+
+This detailed logging will pinpoint the exact issue!

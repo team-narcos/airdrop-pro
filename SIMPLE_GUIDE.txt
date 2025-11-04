@@ -1,0 +1,222 @@
+================================================================================
+                    SIMPLE STEP-BY-STEP GUIDE
+================================================================================
+
+STEP 1: FIND YOUR APK FILE
+================================================================================
+
+The APK will be created in ONE of these locations:
+
+Option A (if build script worked):
+   📂 C:\Users\Abhijeet Nardele\Projects\my-app\app-release.apk
+
+Option B (in temp folder):
+   📂 C:\temp-build\airdrop-app\build\app\outputs\flutter-apk\app-release.apk
+
+TO FIND IT:
+1. Open File Explorer (Windows key + E)
+2. Copy and paste this path:
+   C:\temp-build\airdrop-app\build\app\outputs\flutter-apk
+3. Look for: app-release.apk
+
+OR just search:
+   - Press Windows key
+   - Type: app-release.apk
+   - It will show you where it is
+
+
+================================================================================
+STEP 2: INSTALL APK ON YOUR PHONE
+================================================================================
+
+1. Connect your phone to computer with USB cable
+
+2. Open Command Prompt or PowerShell:
+   - Press Windows key
+   - Type: cmd
+   - Press Enter
+
+3. Navigate to where APK is located:
+   
+   If APK is in project folder:
+   ────────────────────────────────────────────────────────────────────────
+   cd "C:\Users\Abhijeet Nardele\Projects\my-app"
+   ────────────────────────────────────────────────────────────────────────
+
+   If APK is in temp folder:
+   ────────────────────────────────────────────────────────────────────────
+   cd "C:\temp-build\airdrop-app\build\app\outputs\flutter-apk"
+   ────────────────────────────────────────────────────────────────────────
+
+4. Install APK:
+   ────────────────────────────────────────────────────────────────────────
+   adb install -r app-release.apk
+   ────────────────────────────────────────────────────────────────────────
+
+   You should see: "Success"
+
+
+================================================================================
+STEP 3: VIEW LOGS TO DEBUG FILE TRANSFER
+================================================================================
+
+WHAT ARE LOGS?
+   Logs are messages from the app that show what's happening inside.
+   We added special "[TCP Transfer]" messages to track file transfers.
+
+WHERE TO RUN LOGCAT COMMAND?
+   In Command Prompt (cmd) or PowerShell - same place you installed APK
+
+HOW TO VIEW LOGS:
+
+1. Phone must be connected via USB
+
+2. Clear old logs first:
+   ────────────────────────────────────────────────────────────────────────
+   adb logcat -c
+   ────────────────────────────────────────────────────────────────────────
+
+3. Start monitoring (this will show live logs):
+   ────────────────────────────────────────────────────────────────────────
+   adb logcat | Select-String "TCP Transfer"
+   ────────────────────────────────────────────────────────────────────────
+
+   NOTE: Use this in PowerShell (the blue terminal)
+   
+   OR in regular Command Prompt (cmd), use:
+   ────────────────────────────────────────────────────────────────────────
+   adb logcat | findstr "TCP Transfer"
+   ────────────────────────────────────────────────────────────────────────
+
+4. KEEP THIS WINDOW OPEN! You'll see messages as you transfer files.
+
+
+================================================================================
+STEP 4: TEST FILE TRANSFER
+================================================================================
+
+Now with logs running in terminal:
+
+1. Open the AirDrop app on BOTH phones
+2. Go to "Devices" tab
+3. You should see the other device
+4. Check if it shows "Online" (green dot) or "Offline" (red dot)
+5. Tap "Send" button (only works if device is Online)
+6. Pick a small file (like a photo)
+7. WATCH THE TERMINAL - you'll see logs appear!
+
+
+================================================================================
+WHAT TO LOOK FOR IN LOGS
+================================================================================
+
+✅ GOOD LOGS (File transfer working):
+────────────────────────────────────────────────────────────────────────
+[TCP Transfer] Server started on port 37777
+[TCP Transfer] Connecting to 192.168.1.100:37777
+[TCP Transfer] Sending file: photo.jpg (2048000 bytes)
+[TCP Transfer] Read 2048000 bytes from file (expected 2048000)
+[TCP Transfer] Sending 2048000 bytes...
+[TCP Transfer] File data sent and flushed
+[TCP Transfer] Received metadata: {fileName: photo.jpg, fileSize: 2048000}
+[TCP Transfer] Using storage directory: /storage/emulated/0/...
+[TCP Transfer] Sent ACCEPT, waiting for file data...
+[TCP Transfer] Received: 2048000 / 2048000 bytes (100%)
+[TCP Transfer] Closing file sink...
+[TCP Transfer] File sink closed
+[TCP Transfer] Expected size: 2048000, Actual size: 2048000
+[TCP Transfer] File received successfully
+────────────────────────────────────────────────────────────────────────
+
+❌ BAD LOGS (File transfer NOT working):
+────────────────────────────────────────────────────────────────────────
+[TCP Transfer] Expected size: 2048000, Actual size: 0    ← FILE IS EMPTY!
+────────────────────────────────────────────────────────────────────────
+
+
+================================================================================
+STEP 5: SAVE LOGS TO FILE (IF NEEDED)
+================================================================================
+
+If files still show 0 bytes, save logs to send to me:
+
+1. Stop the running logcat (press Ctrl+C)
+
+2. Clear logs:
+   ────────────────────────────────────────────────────────────────────────
+   adb logcat -c
+   ────────────────────────────────────────────────────────────────────────
+
+3. Save logs to file:
+   ────────────────────────────────────────────────────────────────────────
+   adb logcat > transfer_logs.txt
+   ────────────────────────────────────────────────────────────────────────
+
+4. Do the file transfer in the app
+
+5. Stop logging (press Ctrl+C)
+
+6. File will be saved at:
+   C:\Users\Abhijeet Nardele\transfer_logs.txt
+
+7. Open it and search for "[TCP Transfer]" lines
+
+8. Copy those lines and send them to me!
+
+
+================================================================================
+QUICK REFERENCE
+================================================================================
+
+FIND APK:
+   C:\temp-build\airdrop-app\build\app\outputs\flutter-apk\app-release.apk
+
+INSTALL APK:
+   adb install -r app-release.apk
+
+VIEW LOGS (PowerShell):
+   adb logcat | Select-String "TCP Transfer"
+
+VIEW LOGS (Command Prompt):
+   adb logcat | findstr "TCP Transfer"
+
+SAVE LOGS TO FILE:
+   adb logcat > transfer_logs.txt
+   (then press Ctrl+C after transfer)
+
+CHECK FILES ON PHONE:
+   adb shell ls -lh /storage/emulated/0/Android/data/com.example.airdrop_app/files/ReceivedFiles/
+
+
+================================================================================
+TROUBLESHOOTING
+================================================================================
+
+Problem: "adb is not recognized"
+Solution: You need to install Android Platform Tools
+   Download from: https://developer.android.com/tools/releases/platform-tools
+
+Problem: "device not found"
+Solution: 
+   - Connect phone via USB
+   - Enable USB debugging in phone settings
+   - Allow USB debugging when popup appears on phone
+
+Problem: Can't find APK
+Solution:
+   - Check both locations listed in STEP 1
+   - Or search for "app-release.apk" in Windows search
+
+Problem: Logs not showing
+Solution:
+   - Make sure phone is connected
+   - Run: adb devices (should show your device)
+   - Try the command again
+
+
+================================================================================
+
+THAT'S IT! Follow these steps and you'll see exactly what's happening
+with your file transfers. The logs will tell us everything! 🔍
+
+================================================================================

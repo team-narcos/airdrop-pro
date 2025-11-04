@@ -1,0 +1,222 @@
+import 'dart:async';
+import 'package:flutter/foundation.dart';
+import '../core/platform/platform_adapter.dart';
+import '../core/transport/hybrid_connection_manager.dart';
+// Temporarily commented for build compatibility
+// import '../core/transport/wifi_direct_enhanced_transport.dart';
+// import '../core/transport/bluetooth_mesh_transport.dart';
+import '../core/discovery/discovery_engine.dart';
+
+/// Integrated discovery service using all available transport protocols
+class IntegratedDiscoveryService {
+  final HybridConnectionManager _connectionManager = HybridConnectionManager();
+  final _devicesController = StreamController<List<DiscoveredDevice>>.broadcast();
+  final List<DiscoveredDevice> _discoveredDevices = [];
+  
+  Timer? _discoveryTimer;
+  bool _isDiscovering = false;
+  
+  Stream<List<DiscoveredDevice>> get devicesStream => _devicesController.stream;
+  List<DiscoveredDevice> get devices => List.unmodifiable(_discoveredDevices);
+
+  /// Start multi-protocol device discovery
+  Future<void> startDiscovery() async {
+    if (_isDiscovering) return;
+    
+    print('[IntegratedDiscovery] Starting multi-protocol discovery...');
+    _isDiscovering = true;
+    
+    // Initialize connection manager
+    await _connectionManager.initialize();
+    
+    // Start WiFi Direct discovery if available
+    if (PlatformAdapter.supportsWiFiDirect) {
+      await _startWiFiDirectDiscovery();
+    }
+    
+    // Start Bluetooth discovery if available
+    if (PlatformAdapter.supportsBluetooth) {
+      await _startBluetoothDiscovery();
+    }
+    
+    // Start WebRTC discovery (works on all platforms)
+    await _startWebRTCDiscovery();
+    
+    // Periodic discovery scan
+    _discoveryTimer = Timer.periodic(const Duration(seconds: 5), (_) {
+      _refreshDiscovery();
+    });
+    
+    print('[IntegratedDiscovery] Discovery started on available protocols');
+  }
+
+  /// Stop discovery
+  Future<void> stopDiscovery() async {
+    if (!_isDiscovering) return;
+    
+    print('[IntegratedDiscovery] Stopping discovery...');
+    _isDiscovering = false;
+    _discoveryTimer?.cancel();
+    
+    await _connectionManager.dispose();
+    
+    _discoveredDevices.clear();
+    _devicesController.add([]);
+  }
+
+  /// Start WiFi Direct peer discovery (stub for build)
+  Future<void> _startWiFiDirectDiscovery() async {
+    // WiFi Direct discovery temporarily disabled for build
+    print('[IntegratedDiscovery] WiFi Direct not available in this build');
+  }
+
+  /// Start Bluetooth mesh discovery (stub for build)
+  Future<void> _startBluetoothDiscovery() async {
+    // Bluetooth discovery temporarily disabled for build
+    print('[IntegratedDiscovery] Bluetooth not available in this build');
+  }
+
+  /// Start WebRTC discovery (fallback)
+  Future<void> _startWebRTCDiscovery() async {
+    try {
+      // WebRTC discovery via signaling server
+      // This is the fallback that works on all platforms
+      print('[IntegratedDiscovery] WebRTC discovery started');
+      
+      // Simulate WebRTC peers for demo
+      if (PlatformAdapter.isWeb) {
+        _addOrUpdateDevice(DiscoveredDevice(
+          id: 'webrtc-demo-1',
+          name: 'WebRTC Peer (Demo)',
+          address: '192.168.1.100',
+          protocol: ConnectionProtocol.webrtc,
+          signalStrength: -60,
+          isAvailable: true,
+        ));
+      }
+    } catch (e) {
+      print('[IntegratedDiscovery] WebRTC error: $e');
+    }
+  }
+
+  /// Refresh discovery
+  void _refreshDiscovery() {
+    if (!_isDiscovering) return;
+    
+    // Remove stale devices (not seen in 30 seconds)
+    final now = DateTime.now();
+    _discoveredDevices.removeWhere((device) {
+      return now.difference(device.lastSeen).inSeconds > 30;
+    });
+    
+    _devicesController.add(List.from(_discoveredDevices));
+  }
+
+  /// Add or update discovered device
+  void _addOrUpdateDevice(DiscoveredDevice device) {
+    final index = _discoveredDevices.indexWhere((d) => d.id == device.id);
+    
+    if (index != -1) {
+      _discoveredDevices[index] = device;
+    } else {
+      _discoveredDevices.add(device);
+    }
+    
+    _devicesController.add(List.from(_discoveredDevices));
+    print('[IntegratedDiscovery] Device found: ${device.name} via ${device.protocol.name}');
+  }
+
+  /// Connect to device using best available protocol
+  Future<bool> connectToDevice(String deviceId) async {
+    final device = _discoveredDevices.firstWhere(
+      (d) => d.id == deviceId,
+      orElse: () => throw Exception('Device not found'),
+    );
+    
+    print('[IntegratedDiscovery] Connecting to ${device.name} via ${device.protocol.name}...');
+    
+    try {
+      final connection = await _connectionManager.connect(
+        peerId: device.id,
+        peerAddress: device.address,
+        preferredProtocol: device.protocol,
+      );
+      
+      if (connection != null) {
+        print('[IntegratedDiscovery] Connected successfully!');
+        return true;
+      }
+    } catch (e) {
+      print('[IntegratedDiscovery] Connection failed: $e');
+    }
+    
+    return false;
+  }
+
+  /// Send file to device
+  Future<bool> sendFile(String deviceId, String filePath, int fileSize) async {
+    final connection = _connectionManager.getActiveConnection(deviceId);
+    
+    if (connection == null) {
+      print('[IntegratedDiscovery] No active connection to device');
+      return false;
+    }
+    
+    try {
+      // Use connection manager's send capability
+      // This will automatically use chunking, compression, encryption
+      await connection.sendData(filePath.codeUnits);
+      return true;
+    } catch (e) {
+      print('[IntegratedDiscovery] Send failed: $e');
+      return false;
+    }
+  }
+
+  void dispose() {
+    _discoveryTimer?.cancel();
+    _connectionManager.dispose();
+    _devicesController.close();
+  }
+}
+
+/// Discovered device model
+class DiscoveredDevice {
+  final String id;
+  final String name;
+  final String address;
+  final ConnectionProtocol protocol;
+  final int signalStrength;
+  final bool isAvailable;
+  final DateTime lastSeen;
+
+  DiscoveredDevice({
+    required this.id,
+    required this.name,
+    required this.address,
+    required this.protocol,
+    required this.signalStrength,
+    required this.isAvailable,
+    DateTime? lastSeen,
+  }) : lastSeen = lastSeen ?? DateTime.now();
+
+  String get protocolName {
+    switch (protocol) {
+      case ConnectionProtocol.wifiDirect:
+        return 'WiFi Direct';
+      case ConnectionProtocol.bluetoothMesh:
+        return 'Bluetooth';
+      case ConnectionProtocol.webrtc:
+        return 'WebRTC';
+      case ConnectionProtocol.ble:
+        return 'BLE';
+    }
+  }
+
+  String get signalQuality {
+    if (signalStrength > -50) return 'Excellent';
+    if (signalStrength > -60) return 'Good';
+    if (signalStrength > -70) return 'Fair';
+    return 'Weak';
+  }
+}

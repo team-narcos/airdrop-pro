@@ -1,0 +1,64 @@
+================================================================
+DIAGNOSTIC STEPS - Please Do This NOW
+================================================================
+
+The "Allow Everyone" setting is NOT being used by the TCP transfer code.
+This means files should work regardless of the setting.
+
+But you're seeing different behavior, which suggests:
+1. Either the setting is being checked somewhere else
+2. Or there's a UI issue hiding received files
+3. Or there's a permission/storage issue
+
+LET'S DIAGNOSE:
+===============
+
+STEP 1: Connect ONE device via USB
+-----------------------------------
+Connect the RECEIVER device (Device B) to your PC
+
+STEP 2: Enable USB Debugging
+-----------------------------
+Make sure USB debugging is enabled on Device B
+
+STEP 3: Start Logging (PowerShell)
+-----------------------------------
+adb logcat -c
+adb logcat | Select-String "TCP Transfer"
+
+STEP 4: Test with "Allow Everyone" OFF
+---------------------------------------
+1. On Device B: Turn OFF "Allow Everyone"
+2. On Device A: Send a small image file to Device B
+3. Watch the logs on PC
+
+STEP 5: Look for These Log Lines
+----------------------------------
+On RECEIVER (Device B), you should see:
+[TCP Transfer] Client connected: ...
+[TCP Transfer] Metadata length: ...
+[TCP Transfer] Metadata - fileName: ..., fileSize: ...
+[TCP Transfer] Received all ... bytes, writing to file...
+[TCP Transfer] File written and flushed to disk
+[TCP Transfer] Expected size: ..., Actual size: ...
+[TCP Transfer] File received successfully: ...
+
+STEP 6: Check if file exists
+-----------------------------
+adb shell ls -la /storage/emulated/0/Android/data/com.example.airdrop/files/ReceivedFiles/
+
+STEP 7: Test with "Allow Everyone" ON
+--------------------------------------
+1. On Device B: Turn ON "Allow Everyone"
+2. On Device A: Send another file to Device B
+3. Watch the logs again
+
+STEP 8: Share Results
+---------------------
+Tell me:
+- What logs appear for "Allow Everyone OFF"?
+- What logs appear for "Allow Everyone ON"?
+- Does the file exist in storage in both cases?
+- Does the UI show the file in both cases?
+
+This will help me understand where the problem is.

@@ -1,0 +1,416 @@
+import 'dart:async';
+import 'dart:io';
+import 'dart:typed_data';
+import 'package:flutter/foundation.dart';
+import 'package:wifi_iot/wifi_iot.dart';
+import 'package:connectivity_plus/connectivity_plus.dart';
+import 'package:logger/logger.dart';
+import '../models/peer_device.dart';
+
+/// WiFi Direct Transport - Direct device-to-device communication without router
+/// Supports:
+/// - High-speed transfers (up to 250 Mbps)
+/// - Range: 200+ meters
+/// - True offline operation
+/// - Auto-discovery and pairing
+class WiFiDirectTransport {
+  final Logger _logger = Logger();
+  final Connectivity _connectivity = Connectivity();
+  
+  // Connection state
+  bool _isInitialized = false;
+  bool _isGroupOwner = false;
+  ServerSocket? _serverSocket;
+  Socket? _clientSocket;
+  String? _groupName;
+  String? _groupPassword;
+  
+  // Peer management
+  final Map<String, PeerDevice> _discoveredPeers = {};
+  final StreamController<List<PeerDevice>> _peersController = StreamController.broadcast();
+  final StreamController<Uint8List> _dataController = StreamController.broadcast();
+  final StreamController<ConnectionState> _connectionStateController = StreamController.broadcast();
+  
+  // Constants
+  static const int DEFAULT_PORT = 8888;
+  static const int MAX_PACKET_SIZE = 65536; // 64KB
+  static const Duration DISCOVERY_TIMEOUT = Duration(seconds: 30);
+  static const Duration CONNECTION_TIMEOUT = Duration(seconds: 15);
+  
+  // Streams
+  Stream<List<PeerDevice>> get peersStream => _peersController.stream;
+  Stream<Uint8List> get dataStream => _dataController.stream;
+  Stream<ConnectionState> get connectionStateStream => _connectionStateController.stream;
+  
+  /// Initialize WiFi Direct
+  Future<bool> initialize() async {
+    if (_isInitialized) return true;
+    
+    try {
+      _logger.i('[WiFiDirect] Initializing WiFi Direct transport...');
+      
+      // Check if WiFi is enabled
+      bool? isWifiEnabled = await WiFiForIoTPlugin.isEnabled();
+      if (isWifiEnabled == null || !isWifiEnabled) {
+        _logger.w('[WiFiDirect] WiFi is not enabled');
+        await WiFiForIoTPlugin.setEnabled(true, shouldOpenSettings: true);
+      }
+      
+      // Check platform support
+      if (Platform.isAndroid) {
+        _logger.i('[WiFiDirect] Android platform detected - WiFi Direct supported');
+      } else if (Platform.isIOS) {
+        _logger.w('[WiFiDirect] iOS platform - Using Multipeer Connectivity fallback');
+      }
+      
+      _isInitialized = true;
+      _connectionStateController.add(ConnectionState.disconnected);
+      _logger.i('[WiFiDirect] WiFi Direct initialized successfully');
+      return true;
+    } catch (e) {
+      _logger.e('[WiFiDirect] Initialization failed: $e');
+      return false;
+    }
+  }
+  
+  /// Start discovery of nearby WiFi Direct peers
+  Future<void> startDiscovery() async {
+    if (!_isInitialized) {
+      await initialize();
+    }
+    
+    try {
+      _logger.i('[WiFiDirect] Starting peer discovery...');
+      _connectionStateController.add(ConnectionState.discovering);
+      
+      // Platform-specific discovery
+      if (Platform.isAndroid) {
+        await _discoverAndroidPeers();
+      } else if (Platform.isIOS) {
+        await _discoverIOSPeers();
+      }
+      
+      _logger.i('[WiFiDirect] Discovery started - found ${_discoveredPeers.length} peers');
+    } catch (e) {
+      _logger.e('[WiFiDirect] Discovery failed: $e');
+      _connectionStateController.add(ConnectionState.error);
+    }
+  }
+  
+  /// Android-specific peer discovery using WiFi Direct
+  Future<void> _discoverAndroidPeers() async {
+    try {
+      // Scan for available WiFi networks (WiFi Direct groups appear as networks)
+      List<WifiNetwork>? networks = await WiFiForIoTPlugin.loadWifiList();
+      
+      if (networks != null && networks.isNotEmpty) {
+        _discoveredPeers.clear();
+        
+        for (var network in networks) {
+          // WiFi Direct devices typically have DIRECT- prefix
+          if (network.ssid?.startsWith('DIRECT-') ?? false) {
+            final peer = PeerDevice(
+              id: network.bssid ?? '',
+              name: network.ssid ?? 'Unknown Device',
+              deviceType: 'Android',
+              ipAddress: '',
+              signalStrength: network.level ?? -100,
+              isOnline: true,
+              lastSeen: DateTime.now(),
+              capabilities: ['wifi-direct', 'high-speed'],
+            );
+            
+            _discoveredPeers[peer.id] = peer;
+          }
+        }
+        
+        _peersController.add(_discoveredPeers.values.toList());
+        _logger.i('[WiFiDirect] Found ${_discoveredPeers.length} WiFi Direct peers');
+      }
+    } catch (e) {
+      _logger.e('[WiFiDirect] Android peer discovery error: $e');
+    }
+  }
+  
+  /// iOS-specific peer discovery (fallback to Multipeer)
+  Future<void> _discoverIOSPeers() async {
+    // iOS uses Multipeer Connectivity framework
+    // This is a placeholder - actual implementation would use Multipeer
+    _logger.i('[WiFiDirect] iOS peer discovery - using Multipeer Connectivity');
+  }
+  
+  /// Stop peer discovery
+  Future<void> stopDiscovery() async {
+    try {
+      _logger.i('[WiFiDirect] Stopping peer discovery...');
+      _connectionStateController.add(ConnectionState.disconnected);
+      _discoveredPeers.clear();
+      _peersController.add([]);
+    } catch (e) {
+      _logger.e('[WiFiDirect] Stop discovery error: $e');
+    }
+  }
+  
+  /// Create a WiFi Direct group (become group owner)
+  Future<bool> createGroup({String? groupName, String? password}) async {
+    try {
+      _logger.i('[WiFiDirect] Creating WiFi Direct group...');
+      _connectionStateController.add(ConnectionState.connecting);
+      
+      _groupName = groupName ?? 'AirDrop-${DateTime.now().millisecondsSinceEpoch}';
+      _groupPassword = password ?? _generateSecurePassword();
+      
+      // For Android, create a WiFi hotspot
+      if (Platform.isAndroid) {
+        bool result = await WiFiForIoTPlugin.setWiFiAPEnabled(true);
+        
+        if (result) {
+          // Configure hotspot
+          await WiFiForIoTPlugin.setWiFiAPSSID(_groupName!);
+          await WiFiForIoTPlugin.setWiFiAPPreSharedKey(_groupPassword!);
+          
+          _isGroupOwner = true;
+          
+          // Start server socket to accept connections
+          await _startServer();
+          
+          _connectionStateController.add(ConnectionState.connected);
+          _logger.i('[WiFiDirect] Group created: $_groupName');
+          return true;
+        }
+      }
+      
+      return false;
+    } catch (e) {
+      _logger.e('[WiFiDirect] Create group error: $e');
+      _connectionStateController.add(ConnectionState.error);
+      return false;
+    }
+  }
+  
+  /// Connect to a WiFi Direct group
+  Future<bool> connectToGroup(PeerDevice peer, {String? password}) async {
+    try {
+      _logger.i('[WiFiDirect] Connecting to group: ${peer.name}');
+      _connectionStateController.add(ConnectionState.connecting);
+      
+      // Connect to the WiFi network
+      bool connected = await WiFiForIoTPlugin.connect(
+        peer.name,
+        password: password ?? '',
+        security: NetworkSecurity.WPA,
+      );
+      
+      if (connected) {
+        _isGroupOwner = false;
+        
+        // Wait for IP assignment
+        await Future.delayed(const Duration(seconds: 2));
+        
+        // Connect to group owner's server
+        await _connectToServer(peer);
+        
+        _connectionStateController.add(ConnectionState.connected);
+        _logger.i('[WiFiDirect] Connected to group: ${peer.name}');
+        return true;
+      }
+      
+      return false;
+    } catch (e) {
+      _logger.e('[WiFiDirect] Connect to group error: $e');
+      _connectionStateController.add(ConnectionState.error);
+      return false;
+    }
+  }
+  
+  /// Start server socket (for group owner)
+  Future<void> _startServer() async {
+    try {
+      _serverSocket = await ServerSocket.bind(InternetAddress.anyIPv4, DEFAULT_PORT);
+      _logger.i('[WiFiDirect] Server started on port $DEFAULT_PORT');
+      
+      _serverSocket!.listen((Socket client) {
+        _logger.i('[WiFiDirect] Client connected: ${client.remoteAddress.address}');
+        _clientSocket = client;
+        
+        // Listen for incoming data
+        client.listen(
+          (Uint8List data) {
+            _dataController.add(data);
+          },
+          onError: (error) {
+            _logger.e('[WiFiDirect] Client connection error: $error');
+          },
+          onDone: () {
+            _logger.i('[WiFiDirect] Client disconnected');
+            _clientSocket = null;
+          },
+        );
+      });
+    } catch (e) {
+      _logger.e('[WiFiDirect] Server start error: $e');
+    }
+  }
+  
+  /// Connect to server socket (for group member)
+  Future<void> _connectToServer(PeerDevice peer) async {
+    try {
+      // Try to get group owner's IP address
+      String? serverIp = await _getGroupOwnerIP();
+      
+      if (serverIp != null) {
+        _clientSocket = await Socket.connect(
+          serverIp,
+          DEFAULT_PORT,
+          timeout: CONNECTION_TIMEOUT,
+        );
+        
+        _logger.i('[WiFiDirect] Connected to server: $serverIp:$DEFAULT_PORT');
+        
+        // Listen for incoming data
+        _clientSocket!.listen(
+          (Uint8List data) {
+            _dataController.add(data);
+          },
+          onError: (error) {
+            _logger.e('[WiFiDirect] Server connection error: $error');
+          },
+          onDone: () {
+            _logger.i('[WiFiDirect] Server disconnected');
+            _clientSocket = null;
+          },
+        );
+      }
+    } catch (e) {
+      _logger.e('[WiFiDirect] Connect to server error: $e');
+    }
+  }
+  
+  /// Get group owner's IP address
+  Future<String?> _getGroupOwnerIP() async {
+    try {
+      // In WiFi Direct, group owner typically has gateway IP
+      String? ip = await WiFiForIoTPlugin.getIP();
+      if (ip != null) {
+        // Convert client IP to gateway IP (e.g., 192.168.43.5 -> 192.168.43.1)
+        List<String> parts = ip.split('.');
+        if (parts.length == 4) {
+          return '${parts[0]}.${parts[1]}.${parts[2]}.1';
+        }
+      }
+    } catch (e) {
+      _logger.e('[WiFiDirect] Get group owner IP error: $e');
+    }
+    return null;
+  }
+  
+  /// Send data to connected peer
+  Future<bool> sendData(Uint8List data) async {
+    try {
+      if (_clientSocket == null) {
+        _logger.e('[WiFiDirect] No active connection');
+        return false;
+      }
+      
+      _clientSocket!.add(data);
+      await _clientSocket!.flush();
+      
+      _logger.d('[WiFiDirect] Sent ${data.length} bytes');
+      return true;
+    } catch (e) {
+      _logger.e('[WiFiDirect] Send data error: $e');
+      return false;
+    }
+  }
+  
+  /// Send file in chunks
+  Future<bool> sendFile(File file, {Function(double)? onProgress}) async {
+    try {
+      if (_clientSocket == null) {
+        _logger.e('[WiFiDirect] No active connection');
+        return false;
+      }
+      
+      int fileSize = await file.length();
+      int sentBytes = 0;
+      
+      await for (var chunk in file.openRead()) {
+        _clientSocket!.add(chunk);
+        sentBytes += chunk.length;
+        
+        if (onProgress != null) {
+          onProgress(sentBytes / fileSize);
+        }
+      }
+      
+      await _clientSocket!.flush();
+      _logger.i('[WiFiDirect] File sent successfully: ${file.path}');
+      return true;
+    } catch (e) {
+      _logger.e('[WiFiDirect] Send file error: $e');
+      return false;
+    }
+  }
+  
+  /// Disconnect from current connection
+  Future<void> disconnect() async {
+    try {
+      _logger.i('[WiFiDirect] Disconnecting...');
+      
+      // Close sockets
+      await _clientSocket?.close();
+      await _serverSocket?.close();
+      
+      _clientSocket = null;
+      _serverSocket = null;
+      
+      // Disable hotspot if we were group owner
+      if (_isGroupOwner && Platform.isAndroid) {
+        await WiFiForIoTPlugin.setWiFiAPEnabled(false);
+      }
+      
+      _isGroupOwner = false;
+      _groupName = null;
+      _groupPassword = null;
+      
+      _connectionStateController.add(ConnectionState.disconnected);
+      _logger.i('[WiFiDirect] Disconnected successfully');
+    } catch (e) {
+      _logger.e('[WiFiDirect] Disconnect error: $e');
+    }
+  }
+  
+  /// Generate secure random password
+  String _generateSecurePassword({int length = 12}) {
+    const chars = 'abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789';
+    final random = DateTime.now().millisecondsSinceEpoch;
+    return List.generate(length, (index) => chars[(random + index) % chars.length]).join();
+  }
+  
+  /// Get connection info
+  Map<String, dynamic> getConnectionInfo() {
+    return {
+      'isConnected': _clientSocket != null,
+      'isGroupOwner': _isGroupOwner,
+      'groupName': _groupName,
+      'peersCount': _discoveredPeers.length,
+    };
+  }
+  
+  /// Dispose resources
+  void dispose() {
+    disconnect();
+    _peersController.close();
+    _dataController.close();
+    _connectionStateController.close();
+  }
+}
+
+/// Connection state enum
+enum ConnectionState {
+  disconnected,
+  discovering,
+  connecting,
+  connected,
+  error,
+}

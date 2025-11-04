@@ -1,0 +1,16 @@
+<?xml version="1.0" encoding="utf-8"?>
+<paths>
+    <!-- External files directory - covers getExternalStorageDirectory() -->
+    <!-- This is /storage/emulated/0/Android/data/<package>/files/ -->
+    <external-files-path name="external_files" path="." />
+    
+    <!-- Specifically for ReceivedFiles subdirectory -->
+    <external-files-path name="received_files" path="ReceivedFiles/" />
+    
+    <!-- Internal files - fallback for non-Android platforms -->
+    <files-path name="internal_files" path="." />
+    
+    <!-- Cache for temporary files -->
+    <cache-path name="cache" path="." />
+    <external-cache-path name="external_cache" path="." />
+</paths>

@@ -1,0 +1,588 @@
+import 'dart:async';
+import 'dart:io';
+import 'dart:typed_data';
+import 'package:flutter/foundation.dart';
+import 'package:logger/logger.dart';
+import '../models/peer_device.dart';
+import 'wifi_direct_enhanced_transport.dart';
+import 'bluetooth_mesh_transport.dart';
+import 'webrtc_transport.dart';
+import 'ble_transport.dart';
+
+/// Hybrid Connection Manager
+/// Intelligently selects and switches between connection protocols based on:
+/// - File size
+/// - Distance/Signal strength
+/// - Connection reliability
+/// - Battery status
+/// - Network availability
+class HybridConnectionManager {
+  final Logger _logger = Logger();
+  
+  // Transport layers
+  late WiFiDirectTransport _wifiDirectTransport;
+  late BluetoothMeshTransport _bluetoothMeshTransport;
+  WebRTCTransport? _webRtcTransport;
+  BLETransport? _bleTransport;
+  
+  // Connection state
+  TransportProtocol? _activeProtocol;
+  PeerDevice? _connectedPeer;
+  bool _isInitialized = false;
+  
+  // Protocol selection strategy
+  ConnectionStrategy _strategy = ConnectionStrategy.automatic;
+  
+  // Streams
+  final StreamController<TransportProtocol> _protocolController = StreamController.broadcast();
+  final StreamController<ConnectionQuality> _qualityController = StreamController.broadcast();
+  final StreamController<List<PeerDevice>> _peersController = StreamController.broadcast();
+  
+  Stream<TransportProtocol> get protocolStream => _protocolController.stream;
+  Stream<ConnectionQuality> get qualityStream => _qualityController.stream;
+  Stream<List<PeerDevice>> get peersStream => _peersController.stream;
+  
+  // Protocol priority order (higher = better)
+  final Map<TransportProtocol, int> _protocolPriority = {
+    TransportProtocol.wifiDirect: 100,    // Fastest
+    TransportProtocol.webRTC: 90,         // Fast with NAT traversal
+    TransportProtocol.bluetoothClassic: 70, // Medium speed
+    TransportProtocol.bluetoothMesh: 50,  // Good for range
+    TransportProtocol.ble: 30,            // Slowest but widest support
+  };
+  
+  /// Initialize all transport layers
+  Future<bool> initialize() async {
+    if (_isInitialized) return true;
+    
+    try {
+      _logger.i('[HybridManager] Initializing hybrid connection manager...');
+      
+      // Initialize WiFi Direct
+      _wifiDirectTransport = WiFiDirectTransport();
+      await _wifiDirectTransport.initialize();
+      
+      // Initialize Bluetooth Mesh
+      _bluetoothMeshTransport = BluetoothMeshTransport();
+      await _bluetoothMeshTransport.initialize();
+      
+      // Initialize BLE (if available)
+      try {
+        _bleTransport = BLETransport();
+        await _bleTransport!.initialize();
+      } catch (e) {
+        _logger.w('[HybridManager] BLE initialization failed: $e');
+      }
+      
+      // Initialize WebRTC (if network available)
+      try {
+        _webRtcTransport = WebRTCTransport();
+        await _webRtcTransport!.initialize();
+      } catch (e) {
+        _logger.w('[HybridManager] WebRTC initialization failed: $e');
+      }
+      
+      _isInitialized = true;
+      _logger.i('[HybridManager] Hybrid connection manager initialized');
+      return true;
+    } catch (e) {
+      _logger.e('[HybridManager] Initialization failed: $e');
+      return false;
+    }
+  }
+  
+  /// Start unified device discovery across all protocols
+  Future<void> startDiscovery() async {
+    if (!_isInitialized) {
+      await initialize();
+    }
+    
+    try {
+      _logger.i('[HybridManager] Starting unified discovery...');
+      
+      final allPeers = <String, PeerDevice>{};
+      
+      // WiFi Direct discovery
+      _wifiDirectTransport.startDiscovery();
+      _wifiDirectTransport.peersStream.listen((peers) {
+        for (var peer in peers) {
+          allPeers[peer.id] = peer;
+        }
+        _peersController.add(allPeers.values.toList());
+      });
+      
+      // Bluetooth Mesh discovery
+      _bluetoothMeshTransport.startDiscovery();
+      _bluetoothMeshTransport.nodesStream.listen((nodes) {
+        for (var node in nodes) {
+          final peer = PeerDevice(
+            id: node.id,
+            name: node.name,
+            deviceType: 'Bluetooth',
+            ipAddress: '',
+            signalStrength: node.rssi,
+            isOnline: node.isConnected,
+            lastSeen: node.lastSeen,
+            capabilities: ['bluetooth-mesh'],
+          );
+          allPeers[peer.id] = peer;
+        }
+        _peersController.add(allPeers.values.toList());
+      });
+      
+      // BLE discovery
+      if (_bleTransport != null) {
+        await _bleTransport!.startDiscovery();
+      }
+      
+      _logger.i('[HybridManager] Discovery started on all protocols');
+    } catch (e) {
+      _logger.e('[HybridManager] Discovery failed: $e');
+    }
+  }
+  
+  /// Connect to peer using optimal protocol
+  Future<bool> connectToPeer(PeerDevice peer, {TransportProtocol? forceProtocol}) async {
+    try {
+      _logger.i('[HybridManager] Connecting to peer: ${peer.name}');
+      
+      // Determine best protocol
+      TransportProtocol protocol = forceProtocol ?? await _selectOptimalProtocol(peer);
+      
+      _logger.i('[HybridManager] Selected protocol: $protocol');
+      
+      bool connected = false;
+      
+      switch (protocol) {
+        case TransportProtocol.wifiDirect:
+          connected = await _connectViaWiFiDirect(peer);
+          break;
+        case TransportProtocol.bluetoothMesh:
+          connected = await _connectViaBluetooth(peer);
+          break;
+        case TransportProtocol.webRTC:
+          connected = await _connectViaWebRTC(peer);
+          break;
+        case TransportProtocol.ble:
+          connected = await _connectViaBLE(peer);
+          break;
+        default:
+          _logger.e('[HybridManager] Unsupported protocol: $protocol');
+      }
+      
+      if (connected) {
+        _activeProtocol = protocol;
+        _connectedPeer = peer;
+        _protocolController.add(protocol);
+        _logger.i('[HybridManager] Connected via $protocol');
+        
+        // Start monitoring connection quality
+        _monitorConnectionQuality();
+      }
+      
+      return connected;
+    } catch (e) {
+      _logger.e('[HybridManager] Connect to peer failed: $e');
+      return false;
+    }
+  }
+  
+  /// Select optimal protocol based on context
+  Future<TransportProtocol> _selectOptimalProtocol(PeerDevice peer, {int? fileSize}) async {
+    if (_strategy == ConnectionStrategy.manual) {
+      return _activeProtocol ?? TransportProtocol.wifiDirect;
+    }
+    
+    final scores = <TransportProtocol, double>{};
+    
+    // WiFi Direct scoring
+    scores[TransportProtocol.wifiDirect] = _scoreWiFiDirect(peer, fileSize);
+    
+    // Bluetooth Mesh scoring
+    scores[TransportProtocol.bluetoothMesh] = _scoreBluetoothMesh(peer, fileSize);
+    
+    // WebRTC scoring
+    if (_webRtcTransport != null) {
+      scores[TransportProtocol.webRTC] = _scoreWebRTC(peer, fileSize);
+    }
+    
+    // BLE scoring
+    if (_bleTransport != null) {
+      scores[TransportProtocol.ble] = _scoreBLE(peer, fileSize);
+    }
+    
+    // Select protocol with highest score
+    TransportProtocol bestProtocol = scores.entries
+        .reduce((a, b) => a.value > b.value ? a : b)
+        .key;
+    
+    _logger.i('[HybridManager] Protocol scores: $scores');
+    _logger.i('[HybridManager] Selected: $bestProtocol');
+    
+    return bestProtocol;
+  }
+  
+  /// Score WiFi Direct suitability
+  double _scoreWiFiDirect(PeerDevice peer, int? fileSize) {
+    double score = 100.0;
+    
+    // Excellent for large files
+    if (fileSize != null && fileSize > 100 * 1024 * 1024) { // >100MB
+      score += 50.0;
+    }
+    
+    // Check signal strength
+    if (peer.signalStrength < -70) {
+      score -= 30.0;
+    }
+    
+    // WiFi Direct needs both devices to support it
+    if (!peer.capabilities.contains('wifi-direct')) {
+      score = 0;
+    }
+    
+    return score;
+  }
+  
+  /// Score Bluetooth Mesh suitability
+  double _scoreBluetoothMesh(PeerDevice peer, int? fileSize) {
+    double score = 70.0;
+    
+    // Good for medium files
+    if (fileSize != null && fileSize < 50 * 1024 * 1024) { // <50MB
+      score += 20.0;
+    }
+    
+    // Excellent for weak signals (uses mesh routing)
+    if (peer.signalStrength < -70) {
+      score += 30.0;
+    }
+    
+    // Check if device supports bluetooth
+    if (!peer.capabilities.contains('bluetooth-mesh') && 
+        !peer.capabilities.contains('bluetooth')) {
+      score = 0;
+    }
+    
+    return score;
+  }
+  
+  /// Score WebRTC suitability
+  double _scoreWebRTC(PeerDevice peer, int? fileSize) {
+    double score = 80.0;
+    
+    // Great for internet-connected devices
+    if (peer.ipAddress.isNotEmpty) {
+      score += 20.0;
+    }
+    
+    // Not ideal for very large files without good internet
+    if (fileSize != null && fileSize > 500 * 1024 * 1024) { // >500MB
+      score -= 40.0;
+    }
+    
+    return score;
+  }
+  
+  /// Score BLE suitability
+  double _scoreBLE(PeerDevice peer, int? fileSize) {
+    double score = 50.0;
+    
+    // Only good for small files
+    if (fileSize != null) {
+      if (fileSize < 1 * 1024 * 1024) { // <1MB
+        score += 30.0;
+      } else {
+        score -= 50.0; // BLE is too slow for large files
+      }
+    }
+    
+    // Universal support
+    score += 20.0;
+    
+    return score;
+  }
+  
+  /// Connect via WiFi Direct
+  Future<bool> _connectViaWiFiDirect(PeerDevice peer) async {
+    try {
+      return await _wifiDirectTransport.connectToGroup(peer);
+    } catch (e) {
+      _logger.e('[HybridManager] WiFi Direct connection failed: $e');
+      return false;
+    }
+  }
+  
+  /// Connect via Bluetooth Mesh
+  Future<bool> _connectViaBluetooth(PeerDevice peer) async {
+    try {
+      return await _bluetoothMeshTransport.connectToNode(peer.id);
+    } catch (e) {
+      _logger.e('[HybridManager] Bluetooth connection failed: $e');
+      return false;
+    }
+  }
+  
+  /// Connect via WebRTC
+  Future<bool> _connectViaWebRTC(PeerDevice peer) async {
+    try {
+      if (_webRtcTransport == null) return false;
+      return await _webRtcTransport!.connect(peer);
+    } catch (e) {
+      _logger.e('[HybridManager] WebRTC connection failed: $e');
+      return false;
+    }
+  }
+  
+  /// Connect via BLE
+  Future<bool> _connectViaBLE(PeerDevice peer) async {
+    try {
+      if (_bleTransport == null) return false;
+      return await _bleTransport!.connect(peer);
+    } catch (e) {
+      _logger.e('[HybridManager] BLE connection failed: $e');
+      return false;
+    }
+  }
+  
+  /// Send data using active protocol
+  Future<bool> sendData(Uint8List data) async {
+    if (_activeProtocol == null || _connectedPeer == null) {
+      _logger.e('[HybridManager] No active connection');
+      return false;
+    }
+    
+    try {
+      switch (_activeProtocol!) {
+        case TransportProtocol.wifiDirect:
+          return await _wifiDirectTransport.sendData(data);
+        case TransportProtocol.bluetoothMesh:
+          return await _bluetoothMeshTransport.sendData(data, _connectedPeer!.id);
+        case TransportProtocol.webRTC:
+          return await _webRtcTransport!.sendData(data);
+        case TransportProtocol.ble:
+          return await _bleTransport!.sendData(data);
+        default:
+          return false;
+      }
+    } catch (e) {
+      _logger.e('[HybridManager] Send data failed: $e');
+      
+      // Try fallback protocol
+      return await _tryFallbackProtocol(data);
+    }
+  }
+  
+  /// Send file using active protocol
+  Future<bool> sendFile(File file, {Function(double)? onProgress}) async {
+    if (_activeProtocol == null || _connectedPeer == null) {
+      _logger.e('[HybridManager] No active connection');
+      return false;
+    }
+    
+    // Re-evaluate optimal protocol based on file size
+    int fileSize = await file.length();
+    TransportProtocol optimalProtocol = await _selectOptimalProtocol(
+      _connectedPeer!,
+      fileSize: fileSize,
+    );
+    
+    // Switch protocol if needed
+    if (optimalProtocol != _activeProtocol) {
+      _logger.i('[HybridManager] Switching to $optimalProtocol for file transfer');
+      await disconnect();
+      await connectToPeer(_connectedPeer!, forceProtocol: optimalProtocol);
+    }
+    
+    try {
+      switch (_activeProtocol!) {
+        case TransportProtocol.wifiDirect:
+          return await _wifiDirectTransport.sendFile(file, onProgress: onProgress);
+        default:
+          // For other protocols, read file and send in chunks
+          return await _sendFileInChunks(file, onProgress: onProgress);
+      }
+    } catch (e) {
+      _logger.e('[HybridManager] Send file failed: $e');
+      return false;
+    }
+  }
+  
+  /// Send file in chunks for protocols without native file support
+  Future<bool> _sendFileInChunks(File file, {Function(double)? onProgress}) async {
+    try {
+      int fileSize = await file.length();
+      int sentBytes = 0;
+      const chunkSize = 64 * 1024; // 64KB chunks
+      
+      await for (var chunk in file.openRead()) {
+        bool success = await sendData(Uint8List.fromList(chunk));
+        if (!success) return false;
+        
+        sentBytes += chunk.length;
+        if (onProgress != null) {
+          onProgress(sentBytes / fileSize);
+        }
+      }
+      
+      return true;
+    } catch (e) {
+      _logger.e('[HybridManager] Send file in chunks failed: $e');
+      return false;
+    }
+  }
+  
+  /// Try fallback protocol on failure
+  Future<bool> _tryFallbackProtocol(Uint8List data) async {
+    _logger.i('[HybridManager] Trying fallback protocol...');
+    
+    // Get available protocols sorted by priority
+    final availableProtocols = _protocolPriority.entries
+        .where((e) => e.key != _activeProtocol)
+        .toList()
+      ..sort((a, b) => b.value.compareTo(a.value));
+    
+    for (var entry in availableProtocols) {
+      try {
+        _logger.i('[HybridManager] Attempting fallback: ${entry.key}');
+        
+        // Disconnect current protocol
+        await disconnect();
+        
+        // Connect via fallback protocol
+        bool connected = await connectToPeer(_connectedPeer!, forceProtocol: entry.key);
+        if (connected) {
+          return await sendData(data);
+        }
+      } catch (e) {
+        _logger.w('[HybridManager] Fallback ${entry.key} failed: $e');
+      }
+    }
+    
+    return false;
+  }
+  
+  /// Monitor connection quality and auto-switch if needed
+  void _monitorConnectionQuality() {
+    Timer.periodic(const Duration(seconds: 5), (timer) {
+      if (_activeProtocol == null) {
+        timer.cancel();
+        return;
+      }
+      
+      final quality = _assessConnectionQuality();
+      _qualityController.add(quality);
+      
+      // Switch protocol if quality is poor
+      if (quality == ConnectionQuality.poor && _strategy == ConnectionStrategy.automatic) {
+        _logger.w('[HybridManager] Poor connection quality - considering protocol switch');
+        // Auto-switch logic can be added here
+      }
+    });
+  }
+  
+  /// Assess current connection quality
+  ConnectionQuality _assessConnectionQuality() {
+    // This would analyze actual metrics like latency, packet loss, throughput
+    // For now, return a placeholder
+    return ConnectionQuality.good;
+  }
+  
+  /// Disconnect from current peer
+  Future<void> disconnect() async {
+    try {
+      if (_activeProtocol == null) return;
+      
+      _logger.i('[HybridManager] Disconnecting from ${_activeProtocol}...');
+      
+      switch (_activeProtocol!) {
+        case TransportProtocol.wifiDirect:
+          await _wifiDirectTransport.disconnect();
+          break;
+        case TransportProtocol.bluetoothMesh:
+          await _bluetoothMeshTransport.disconnectAll();
+          break;
+        case TransportProtocol.webRTC:
+          await _webRtcTransport?.disconnect();
+          break;
+        case TransportProtocol.ble:
+          await _bleTransport?.disconnect();
+          break;
+        default:
+          break;
+      }
+      
+      _activeProtocol = null;
+      _connectedPeer = null;
+      
+      _logger.i('[HybridManager] Disconnected');
+    } catch (e) {
+      _logger.e('[HybridManager] Disconnect failed: $e');
+    }
+  }
+  
+  /// Get connection info
+  Map<String, dynamic> getConnectionInfo() {
+    return {
+      'activeProtocol': _activeProtocol?.toString(),
+      'connectedPeer': _connectedPeer?.name,
+      'strategy': _strategy.toString(),
+      'isConnected': _activeProtocol != null,
+    };
+  }
+  
+  /// Set connection strategy
+  void setStrategy(ConnectionStrategy strategy) {
+    _strategy = strategy;
+    _logger.i('[HybridManager] Strategy changed to: $strategy');
+  }
+  
+  /// Dispose resources
+  void dispose() {
+    disconnect();
+    _wifiDirectTransport.dispose();
+    _bluetoothMeshTransport.dispose();
+    _webRtcTransport?.dispose();
+    _bleTransport?.dispose();
+    _protocolController.close();
+    _qualityController.close();
+    _peersController.close();
+  }
+}
+
+/// Transport protocols
+enum TransportProtocol {
+  wifiDirect,
+  bluetoothClassic,
+  bluetoothMesh,
+  ble,
+  webRTC,
+  nfc,
+}
+
+/// Connection strategy
+enum ConnectionStrategy {
+  automatic,  // Auto-select best protocol
+  manual,     // User selects protocol
+  fastest,    // Always prefer fastest protocol
+  reliable,   // Prefer most reliable protocol
+  battery,    // Prefer battery-efficient protocol
+}
+
+/// Connection quality
+enum ConnectionQuality {
+  excellent,
+  good,
+  fair,
+  poor,
+}
+
+// Placeholder classes for missing transports
+class BLETransport {
+  Future<bool> initialize() async => true;
+  Future<void> startDiscovery() async {}
+  Future<bool> connect(PeerDevice peer) async => true;
+  Future<bool> sendData(Uint8List data) async => true;
+  Future<void> disconnect() async {}
+  void dispose() {}
+}
