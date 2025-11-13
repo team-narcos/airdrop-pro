@@ -13,14 +13,14 @@ import '../core/widgets/ultra_premium_navigation.dart';
 import '../core/widgets/ultra_premium_cards.dart';
 import '../core/animations/slide_page_route.dart';
 import '../providers/services_providers.dart';
+import '../providers/p2p_providers.dart';
 import 'devices_screen.dart';
 import 'files_screen.dart';
 import 'history_screen.dart';
 import 'settings_screen.dart';
 import 'qr_pair_screen.dart';
 import 'qr_share_screen.dart';
-import 'room_create_screen.dart';
-import 'room_join_screen.dart';
+// Room screens removed - using P2P discovery instead
 
 class UltraPremiumHomeScreen extends ConsumerStatefulWidget {
   const UltraPremiumHomeScreen({Key? key}) : super(key: key);
@@ -420,16 +420,16 @@ class _UltraPremiumAirDropTabState extends ConsumerState<UltraPremiumAirDropTab>
               () => _openQRPair(),
             ),
             _buildActionCard(
-              'Create Room',
-              CupertinoIcons.add_circled,
+              'WiFi Direct',
+              CupertinoIcons.wifi,
               [PremiumColors.neonGreen, PremiumColors.deepBlue],
-              () => _createRoom(),
+              () => _startP2PDiscovery(),
             ),
             _buildActionCard(
-              'Join Room',
-              CupertinoIcons.arrow_right_circle,
+              'Bluetooth',
+              CupertinoIcons.bluetooth,
               [PremiumColors.luminousOrange, PremiumColors.vibrantPink],
-              () => _joinRoom(),
+              () => _startBluetoothDiscovery(),
             ),
           ],
         ),
@@ -498,15 +498,43 @@ class _UltraPremiumAirDropTabState extends ConsumerState<UltraPremiumAirDropTab>
     );
   }
 
-  void _createRoom() {
-    Navigator.of(context).push(
-      SlidePageRoute(page: const RoomCreateScreen()),
-    );
+  void _startP2PDiscovery() {
+    // Start WiFi Direct discovery using our new Hybrid Connection Engine
+    // This works WITHOUT same WiFi - true offline P2P!
+    ref.read(discoveryNotifierProvider.notifier).startDiscovery();
+    _showDiscoveryDialog('WiFi Direct', 'Scanning for nearby devices...');
   }
 
-  void _joinRoom() {
-    Navigator.of(context).push(
-      SlidePageRoute(page: const RoomJoinScreen()),
+  void _startBluetoothDiscovery() {
+    // Start Bluetooth discovery as fallback
+    ref.read(discoveryNotifierProvider.notifier).startDiscovery();
+    _showDiscoveryDialog('Bluetooth', 'Scanning for Bluetooth devices...');
+  }
+  
+  void _showDiscoveryDialog(String type, String message) {
+    showCupertinoDialog(
+      context: context,
+      builder: (context) => CupertinoAlertDialog(
+        title: Text('$type Discovery'),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            const SizedBox(height: 16),
+            const CupertinoActivityIndicator(),
+            const SizedBox(height: 16),
+            Text(message),
+          ],
+        ),
+        actions: [
+          CupertinoDialogAction(
+            child: const Text('Stop'),
+            onPressed: () {
+              ref.read(discoveryNotifierProvider.notifier).stopDiscovery();
+              Navigator.pop(context);
+            },
+          ),
+        ],
+      ),
     );
   }
 

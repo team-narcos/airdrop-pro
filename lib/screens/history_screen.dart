@@ -25,7 +25,7 @@ class _HistoryScreenState extends ConsumerState<HistoryScreen>
   // Derived from provider
   List<TransferRecord> get _records => ref.watch(transferHistoryProvider);
   
-  final List<String> _filterOptions = ['All', 'Completed'];
+  final List<String> _filterOptions = ['All', 'Sent', 'Received', 'Failed'];
 
   @override
   void initState() {
@@ -147,9 +147,7 @@ class _HistoryScreenState extends ConsumerState<HistoryScreen>
               SizedBox(height: iOS18Spacing.lg),
               
               // Transfer history
-              _records.isEmpty
-                  ? _buildEmptyState()
-                  : _buildTransfersList(),
+              _buildFilteredTransfersList(),
               
               // Bottom padding for navigation
               const SizedBox(height: 120),
@@ -371,25 +369,35 @@ class _HistoryScreenState extends ConsumerState<HistoryScreen>
     );
   }
 
-  Widget _buildTransfersList() {
-    if (_records.isEmpty) {
-      return GlassmorphicCard(
-        padding: EdgeInsets.all(iOS18Spacing.lg),
-        child: Center(
-          child: Text(
-            'No $_selectedFilter transfers found',
-            style: iOS18Typography.body.copyWith(
-              color: iOS18Colors.getTextSecondary(context),
-            ),
-          ),
-        ),
-      );
+
+
+  Widget _buildFilteredTransfersList() {
+    List<TransferRecord> filteredRecords = _records;
+    
+    // Apply filter
+    switch (_selectedFilter) {
+      case 'Sent':
+        filteredRecords = _records.where((r) => r.direction == TransferDirection.sent).toList();
+        break;
+      case 'Received':
+        filteredRecords = _records.where((r) => r.direction == TransferDirection.received).toList();
+        break;
+      case 'Failed':
+        filteredRecords = _records.where((r) => !r.success).toList();
+        break;
+      default:
+        filteredRecords = _records;
     }
+    
+    if (filteredRecords.isEmpty) {
+      return _buildEmptyState();
+    }
+    
     return Column(
-      children: _records.map((r) => _buildRecordItem(r)).toList(),
+      children: filteredRecords.map((r) => _buildRecordItem(r)).toList(),
     );
   }
-
+  
   Widget _buildRecordItem(TransferRecord r) {
     return Padding(
       padding: EdgeInsets.only(bottom: iOS18Spacing.md),
@@ -397,23 +405,91 @@ class _HistoryScreenState extends ConsumerState<HistoryScreen>
         padding: EdgeInsets.all(iOS18Spacing.md),
         child: Row(
           children: [
+            // File type icon
             Container(
-              width: 48,
-              height: 48,
+              width: 56,
+              height: 56,
               decoration: BoxDecoration(
-                gradient: r.success ? iOS18Colors.historyGradient : const LinearGradient(colors: [iOS18Colors.systemRed, iOS18Colors.systemOrange]),
+                gradient: _getFileTypeGradient(r.fileName),
                 borderRadius: BorderRadius.circular(iOS18Spacing.radiusMD),
+                boxShadow: [
+                  BoxShadow(
+                    color: _getFileTypeColor(r.fileName).withOpacity(0.3),
+                    blurRadius: 8,
+                    offset: const Offset(0, 2),
+                  ),
+                ],
               ),
-              child: Icon(r.success ? CupertinoIcons.check_mark_circled : CupertinoIcons.xmark_circle, color: Colors.white, size: 24),
+              child: Icon(
+                _getFileTypeIcon(r.fileName),
+                color: Colors.white,
+                size: 28,
+              ),
             ),
             SizedBox(width: iOS18Spacing.md),
+            
+            // File info
             Expanded(
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  Text(r.fileName, style: iOS18Typography.bodyEmphasized.copyWith(color: iOS18Colors.getTextPrimary(context)), maxLines: 1, overflow: TextOverflow.ellipsis),
-                  SizedBox(height: iOS18Spacing.xs/2),
-                  Text('${(r.totalBytes/(1024*1024)).toStringAsFixed(1)} MB • ${_formatTimestamp(r.timestamp)}', style: iOS18Typography.caption1.copyWith(color: iOS18Colors.getTextSecondary(context))),
+                  Row(
+                    children: [
+                      Expanded(
+                        child: Text(
+                          r.fileName,
+                          style: iOS18Typography.bodyEmphasized.copyWith(
+                            color: iOS18Colors.getTextPrimary(context),
+                          ),
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                        ),
+                      ),
+                      // Direction indicator
+                      Icon(
+                        r.direction == TransferDirection.sent 
+                            ? CupertinoIcons.arrow_up_circle_fill
+                            : CupertinoIcons.arrow_down_circle_fill,
+                        color: r.direction == TransferDirection.sent 
+                            ? iOS18Colors.systemBlue
+                            : iOS18Colors.systemGreen,
+                        size: 18,
+                      ),
+                    ],
+                  ),
+                  SizedBox(height: iOS18Spacing.xs / 2),
+                  Row(
+                    children: [
+                      Text(
+                        _formatBytes(r.totalBytes),
+                        style: iOS18Typography.caption1.copyWith(
+                          color: iOS18Colors.getTextSecondary(context),
+                        ),
+                      ),
+                      Text(
+                        ' • ',
+                        style: iOS18Typography.caption1.copyWith(
+                          color: iOS18Colors.getTextTertiary(context),
+                        ),
+                      ),
+                      Text(
+                        _formatTimestamp(r.timestamp),
+                        style: iOS18Typography.caption1.copyWith(
+                          color: iOS18Colors.getTextSecondary(context),
+                        ),
+                      ),
+                    ],
+                  ),
+                  if (!r.success) ...[
+                    SizedBox(height: iOS18Spacing.xs / 2),
+                    Text(
+                      'Failed',
+                      style: iOS18Typography.caption2.copyWith(
+                        color: iOS18Colors.systemRed,
+                        fontWeight: FontWeight.w600,
+                      ),
+                    ),
+                  ],
                 ],
               ),
             ),
@@ -422,7 +498,102 @@ class _HistoryScreenState extends ConsumerState<HistoryScreen>
       ),
     );
   }
-
+  
+  IconData _getFileTypeIcon(String fileName) {
+    final extension = fileName.split('.').last.toLowerCase();
+    switch (extension) {
+      case 'jpg':
+      case 'jpeg':
+      case 'png':
+      case 'gif':
+      case 'webp':
+        return CupertinoIcons.photo;
+      case 'mp4':
+      case 'mov':
+      case 'avi':
+      case 'mkv':
+        return CupertinoIcons.videocam;
+      case 'mp3':
+      case 'wav':
+      case 'm4a':
+      case 'flac':
+        return CupertinoIcons.music_note;
+      case 'pdf':
+        return CupertinoIcons.doc_text;
+      case 'zip':
+      case 'rar':
+      case '7z':
+        return CupertinoIcons.archivebox;
+      case 'doc':
+      case 'docx':
+      case 'txt':
+        return CupertinoIcons.doc;
+      default:
+        return CupertinoIcons.doc;
+    }
+  }
+  
+  LinearGradient _getFileTypeGradient(String fileName) {
+    final extension = fileName.split('.').last.toLowerCase();
+    switch (extension) {
+      case 'jpg':
+      case 'jpeg':
+      case 'png':
+      case 'gif':
+      case 'webp':
+        return const LinearGradient(colors: [Color(0xFFFF3B30), Color(0xFFFF9500)]);
+      case 'mp4':
+      case 'mov':
+      case 'avi':
+      case 'mkv':
+        return const LinearGradient(colors: [Color(0xFF5856D6), Color(0xFFAF52DE)]);
+      case 'mp3':
+      case 'wav':
+      case 'm4a':
+      case 'flac':
+        return const LinearGradient(colors: [Color(0xFFFF2D55), Color(0xFFAF52DE)]);
+      case 'pdf':
+        return const LinearGradient(colors: [Color(0xFFFF3B30), Color(0xFFFF2D55)]);
+      case 'zip':
+      case 'rar':
+      case '7z':
+        return const LinearGradient(colors: [Color(0xFF5AC8FA), Color(0xFF007AFF)]);
+      default:
+        return iOS18Colors.historyGradient;
+    }
+  }
+  
+  Color _getFileTypeColor(String fileName) {
+    final extension = fileName.split('.').last.toLowerCase();
+    switch (extension) {
+      case 'jpg':
+      case 'jpeg':
+      case 'png':
+      case 'gif':
+      case 'webp':
+        return const Color(0xFFFF3B30);
+      case 'mp4':
+      case 'mov':
+      case 'avi':
+      case 'mkv':
+        return const Color(0xFF5856D6);
+      case 'mp3':
+      case 'wav':
+      case 'm4a':
+      case 'flac':
+        return const Color(0xFFFF2D55);
+      default:
+        return iOS18Colors.systemBlue;
+    }
+  }
+  
+  String _formatBytes(int bytes) {
+    if (bytes < 1024) return '$bytes B';
+    if (bytes < 1024 * 1024) return '${(bytes / 1024).toStringAsFixed(1)} KB';
+    if (bytes < 1024 * 1024 * 1024) return '${(bytes / (1024 * 1024)).toStringAsFixed(1)} MB';
+    return '${(bytes / (1024 * 1024 * 1024)).toStringAsFixed(2)} GB';
+  }
+  
   String _formatTimestamp(DateTime timestamp) {
     final now = DateTime.now();
     final difference = now.difference(timestamp);

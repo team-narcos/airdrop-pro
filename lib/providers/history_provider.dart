@@ -4,12 +4,15 @@ import '../core/platform/platform_adapter.dart';
 import '../data/history/history_repository.dart';
 import 'transfer_provider.dart';
 
+enum TransferDirection { sent, received }
+
 class TransferRecord {
   final String id;
   final String fileName;
   final int totalBytes;
   final DateTime timestamp;
   final bool success;
+  final TransferDirection direction;
 
   const TransferRecord({
     required this.id,
@@ -17,6 +20,7 @@ class TransferRecord {
     required this.totalBytes,
     required this.timestamp,
     required this.success,
+    this.direction = TransferDirection.sent,
   });
 }
 
@@ -96,6 +100,7 @@ class TransferHistoryNotifier extends StateNotifier<List<TransferRecord>> {
           totalBytes: row['size_bytes'] as int,
           timestamp: DateTime.fromMillisecondsSinceEpoch(row['started_at'] as int),
           success: row['status'] == 'completed',
+          direction: row['direction'] == 'received' ? TransferDirection.received : TransferDirection.sent,
         );
       }).toList();
       

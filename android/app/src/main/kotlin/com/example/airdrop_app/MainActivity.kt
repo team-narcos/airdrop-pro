@@ -7,12 +7,16 @@ import io.flutter.embedding.android.FlutterActivity
 import io.flutter.embedding.engine.FlutterEngine
 import io.flutter.plugin.common.MethodChannel
 import java.io.File
+import com.airdrop.pro.WiFiDirectPlugin
 
 class MainActivity : FlutterActivity() {
     private val CHANNEL = "com.nardele.airdrop_app/file_opener"
 
     override fun configureFlutterEngine(flutterEngine: FlutterEngine) {
         super.configureFlutterEngine(flutterEngine)
+        
+        // Register WiFi Direct Plugin
+        flutterEngine.plugins.add(WiFiDirectPlugin())
         
         MethodChannel(flutterEngine.dartExecutor.binaryMessenger, CHANNEL).setMethodCallHandler { call, result ->
             when (call.method) {

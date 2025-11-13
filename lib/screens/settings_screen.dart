@@ -7,8 +7,6 @@ import '../core/widgets/glassmorphic_card.dart';
 import '../core/widgets/theme_selector.dart';
 import '../providers/services_providers.dart';
 import '../services/settings_service.dart';
-import 'features_status_screen.dart';
-import 'demo_mode_screen.dart';
 
 class SettingsScreen extends ConsumerStatefulWidget {
   const SettingsScreen({Key? key}) : super(key: key);
@@ -574,36 +572,6 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen>
     return _buildSettingsSection(
       title: 'About',
       children: [
-        _buildNavigationItem(
-          title: 'Advanced Features',
-          subtitle: '9 Premium features implemented',
-          icon: CupertinoIcons.star_circle_fill,
-          onTap: () {
-            HapticFeedback.lightImpact();
-            Navigator.push(
-              context,
-              CupertinoPageRoute(
-                builder: (context) => const FeaturesStatusScreen(),
-              ),
-            );
-          },
-        ),
-        _buildDivider(),
-        _buildNavigationItem(
-          title: 'Interactive Demo',
-          subtitle: 'Test all features in action',
-          icon: CupertinoIcons.play_circle_fill,
-          onTap: () {
-            HapticFeedback.lightImpact();
-            Navigator.push(
-              context,
-              CupertinoPageRoute(
-                builder: (context) => const DemoModeScreen(),
-              ),
-            );
-          },
-        ),
-        _buildDivider(),
         _buildNavigationItem(
           title: 'App Version',
           subtitle: '1.0.0 (Build 1)',
