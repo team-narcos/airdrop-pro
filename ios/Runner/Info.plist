@@ -45,5 +45,9 @@
 	<true/>
 	<key>UIApplicationSupportsIndirectInputEvents</key>
 	<true/>
+
+	<!-- Local Network privacy permission for discovering peers and file transfer -->
+	<key>NSLocalNetworkUsageDescription</key>
+	<string>This app needs access to devices on your local network to discover peers and transfer files.</string>
 </dict>
 </plist>
