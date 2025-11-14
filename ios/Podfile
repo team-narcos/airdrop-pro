@@ -1,0 +1,23 @@
+# Flutter iOS Podfile
+platform :ios, '13.0'
+
+use_frameworks! :linkage => :static
+
+require_relative '../Flutter/podhelper.rb'
+
+flutter_ios_podfile_setup
+
+target 'Runner' do
+  flutter_install_all_ios_pods File.dirname(File.realpath(__FILE__))
+end
+
+post_install do |installer|
+  flutter_additional_ios_build_settings(installer)
+  installer.pods_project.targets.each do |target|
+    target.build_configurations.each do |config|
+      config.build_settings['IPHONEOS_DEPLOYMENT_TARGET'] = '13.0'
+      # Workaround for some pods requiring modular headers
+      config.build_settings['CLANG_ALLOW_NON_MODULAR_INCLUDES_IN_FRAMEWORK_MODULES'] = 'YES'
+    end
+  end
+end

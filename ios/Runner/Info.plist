@@ -49,5 +49,11 @@
 	<!-- Local Network privacy permission for discovering peers and file transfer -->
 	<key>NSLocalNetworkUsageDescription</key>
 	<string>This app needs access to devices on your local network to discover peers and transfer files.</string>
+
+	<!-- Camera and microphone usage for QR scan and optional WebRTC -->
+	<key>NSCameraUsageDescription</key>
+	<string>Camera access is required to scan QR codes and optionally for video transfer.</string>
+	<key>NSMicrophoneUsageDescription</key>
+	<string>Microphone access may be required for voice notes or optional calls during transfers.</string>
 </dict>
 </plist>
