@@ -61,30 +61,31 @@ workflows:
         script: flutter pub get
       - name: Build macOS (release)
         script: flutter build macos --release
+      - name: Detect built .app path
+        script: |
+          set -euo pipefail
+          FOUND_APP="$(ls -d build/macos/Build/Products/Release/*.app 2>/dev/null | head -n 1 || true)"
+          if [ -z "$FOUND_APP" ]; then
+            echo "No .app found in build/macos/Build/Products/Release" >&2
+            ls -R build/macos/Build/Products || true
+            exit 1
+          fi
+          echo "APP_PATH=$FOUND_APP" >> $CM_ENV
+          BASENAME="$(basename "$FOUND_APP" .app)"
+          echo "APP_NAME=$BASENAME" >> $CM_ENV
       - name: Zip .app for download
         script: |
-          APP_NAME="AirDrop Pro"
-          APP_PATH="build/macos/Build/Products/Release/${APP_NAME}.app"
-          if [ ! -d "$APP_PATH" ]; then
-            APP_PATH="build/macos/Build/Products/Release/Runner.app"
-            APP_NAME="Runner"
-          fi
+          set -euo pipefail
+          echo "Zipping $APP_PATH"
           ditto -c -k --sequesterRsrc --keepParent "$APP_PATH" "${APP_NAME}.zip"
       - name: Create DMG (optional)
         script: |
-          APP_NAME="AirDrop Pro"
-          APP_PATH="build/macos/Build/Products/Release/${APP_NAME}.app"
-          if [ ! -d "$APP_PATH" ]; then
-            APP_PATH="build/macos/Build/Products/Release/Runner.app"
-            APP_NAME="Runner"
-          fi
+          set -euo pipefail
           hdiutil create -volname "$APP_NAME" -srcfolder "$APP_PATH" -ov -format UDZO "${APP_NAME}.dmg"
     artifacts:
       - build/macos/Build/Products/Release/*.app
-      - "AirDrop Pro.zip"
-      - "AirDrop Pro.dmg"
-      - Runner.zip
-      - Runner.dmg
+      - "*.zip"
+      - "*.dmg"
     publishing:
       email:
         recipients:
