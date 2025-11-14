@@ -35,6 +35,8 @@ class _DevicesScreenState extends ConsumerState<DevicesScreen> with TickerProvid
   late Animation<double> _fadeAnimation;
   late Animation<Offset> _slideAnimation;
   bool _isRefreshing = false;
+  bool _showDiscoveryHelp = false;
+  Timer? _discoveryHelpTimer;
 
   @override
   void initState() {
@@ -67,6 +69,7 @@ class _DevicesScreenState extends ConsumerState<DevicesScreen> with TickerProvid
   void dispose() {
     _headerAnimationController.dispose();
     _statsAnimationController.dispose();
+    _discoveryHelpTimer?.cancel();
     super.dispose();
   }
 
@@ -81,6 +84,17 @@ class _DevicesScreenState extends ConsumerState<DevicesScreen> with TickerProvid
       data: (devices) => devices,
       orElse: () => <PeerDevice>[],
     );
+
+    // If on iOS and nothing is found for a few seconds, show guidance banner
+    if (discoveredDevices.isEmpty) {
+      _discoveryHelpTimer ??= Timer(const Duration(seconds: 8), () {
+        if (mounted) setState(() => _showDiscoveryHelp = true);
+      });
+    } else {
+      _discoveryHelpTimer?.cancel();
+      _discoveryHelpTimer = null;
+      if (_showDiscoveryHelp) setState(() => _showDiscoveryHelp = false);
+    }
     
     return SafeArea(
       child: RefreshIndicator(
@@ -223,6 +237,51 @@ class _DevicesScreenState extends ConsumerState<DevicesScreen> with TickerProvid
               
               SizedBox(height: iOS18Spacing.xl),
               
+              // Discovery help banner (iOS fallback)
+              if (_showDiscoveryHelp)
+                Padding(
+                  padding: EdgeInsets.only(bottom: iOS18Spacing.md),
+                  child: GlassmorphicCard(
+                    padding: EdgeInsets.all(iOS18Spacing.md),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          'Can\'t find nearby devices?',
+                          style: iOS18Typography.headline.copyWith(color: iOS18Colors.getTextPrimary(context)),
+                        ),
+                        SizedBox(height: iOS18Spacing.xs),
+                        Text(
+                          'On iOS/macOS, local discovery may be limited. You can pair by scanning a QR or entering IP manually.',
+                          style: iOS18Typography.subheadline.copyWith(color: iOS18Colors.getTextSecondary(context)),
+                        ),
+                        SizedBox(height: iOS18Spacing.sm),
+                        Row(
+                          children: [
+                            CupertinoButton(
+                              padding: EdgeInsets.symmetric(horizontal: iOS18Spacing.md),
+                              color: iOS18Colors.systemBlue,
+                              onPressed: () {
+                                Navigator.of(context).push(CupertinoPageRoute(builder: (_) => const QrPairScreen()));
+                              },
+                              child: const Text('Scan QR'),
+                            ),
+                            SizedBox(width: iOS18Spacing.sm),
+                            CupertinoButton(
+                              padding: EdgeInsets.symmetric(horizontal: iOS18Spacing.md),
+                              color: iOS18Colors.systemGray,
+                              onPressed: () {
+                                Navigator.of(context).push(CupertinoPageRoute(builder: (_) => const ManualConnectScreen()));
+                              },
+                              child: const Text('Enter IP'),
+                            ),
+                          ],
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+
               // Discovered Devices Section
               Row(
                 mainAxisAlignment: MainAxisAlignment.spaceBetween,
