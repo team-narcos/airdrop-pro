@@ -19,6 +19,7 @@ import '../services/tcp_transfer_service.dart';
 // import '../services/enhanced_transfer_service.dart';
 import 'qr_pair_screen.dart';
 import 'qr_share_screen.dart';
+import 'manual_connect_screen.dart';
 import 'dart:math' as math;
 
 class DevicesScreen extends ConsumerStatefulWidget {
@@ -237,10 +238,10 @@ class _DevicesScreenState extends ConsumerState<DevicesScreen> with TickerProvid
               
               SizedBox(height: iOS18Spacing.md),
               
-              discoveredDevices.isEmpty
+discoveredDevices.isEmpty
                   ? _buildEmptyStateWithAnimation(
                       'No Devices Found',
-                      'Turn on AirDrop on nearby devices to see them here',
+                      'Make sure both devices are on the same Wi‑Fi. Or use Quick Actions → Pair Device to Scan QR or Enter IP manually.',
                     )
                   : _buildDiscoveredDevicesList(discoveredDevices),
               
@@ -259,7 +260,7 @@ class _DevicesScreenState extends ConsumerState<DevicesScreen> with TickerProvid
                       ),
                     ),
                     SizedBox(height: iOS18Spacing.md),
-                    Row(
+Row(
                       children: [
                         Expanded(
                           child: _buildQuickActionButton(
@@ -296,6 +297,17 @@ class _DevicesScreenState extends ConsumerState<DevicesScreen> with TickerProvid
                                         );
                                       },
                                     ),
+                                    CupertinoActionSheetAction(
+                                      child: const Text('Enter IP Manually'),
+                                      onPressed: () {
+                                        Navigator.pop(context);
+                                        Navigator.of(context).push(
+                                          CupertinoPageRoute(
+                                            builder: (context) => const ManualConnectScreen(),
+                                          ),
+                                        );
+                                      },
+                                    ),
                                   ],
                                   cancelButton: CupertinoActionSheetAction(
                                     child: const Text('Cancel'),
@@ -314,9 +326,6 @@ class _DevicesScreenState extends ConsumerState<DevicesScreen> with TickerProvid
                             iOS18Colors.getTextSecondary(context),
                             () {
                               HapticFeedback.lightImpact();
-                              // Switch to settings tab (index 4)
-                              // Since we're in a consumer widget, we can't directly access parent state
-                              // Instead, show a message or navigate to settings screen
                               showCupertinoDialog(
                                 context: context,
                                 builder: (context) => CupertinoAlertDialog(

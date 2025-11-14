@@ -23,12 +23,16 @@ class QrPairScreen extends ConsumerWidget {
             if (code == null) return;
             try {
               final map = json.decode(code) as Map<String, dynamic>;
-              final peer = PeerDevice(
+final peer = PeerDevice(
                 id: map['id'] as String,
                 name: map['name'] as String,
                 platform: map['platform'] as String? ?? 'unknown',
                 batteryPercent: 0,
                 signalBars: 0,
+                ipAddress: map['ipAddress'] as String?,
+                port: (map['port'] is int)
+                    ? map['port'] as int
+                    : int.tryParse(map['port']?.toString() ?? ''),
               );
               ref.read(transferServiceProvider).addManualPeer(peer);
               Navigator.of(context).pop();
