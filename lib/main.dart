@@ -13,6 +13,7 @@ import 'screens/premium_splash_screen.dart';
 import 'screens/telegram_splash_screen.dart';
 import 'services/error_logger_service.dart';
 import 'services/notification_service.dart';
+import 'providers/p2p_manager_providers.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();

@@ -29,7 +29,6 @@ class _PremiumBottomNavigationState extends State<PremiumBottomNavigation>
     with TickerProviderStateMixin {
   late List<AnimationController> _controllers;
   late List<Animation<double>> _scaleAnimations;
-  late List<Animation<Color?>> _colorAnimations;
 
   @override
   void initState() {
@@ -46,13 +45,6 @@ class _PremiumBottomNavigationState extends State<PremiumBottomNavigation>
         .map((controller) => Tween<double>(begin: 1.0, end: 1.2).animate(
               CurvedAnimation(parent: controller, curve: Curves.elasticOut),
             ))
-        .toList();
-
-    _colorAnimations = _controllers
-        .map((controller) => ColorTween(
-              begin: iOS18Colors.textSecondary,
-              end: iOS18Colors.systemBlue,
-            ).animate(controller))
         .toList();
 
     // Animate the initially selected item
@@ -86,7 +78,7 @@ class _PremiumBottomNavigationState extends State<PremiumBottomNavigation>
 
   @override
   Widget build(BuildContext context) {
-    final brightness = MediaQuery.of(context).platformBrightness;
+    final brightness = CupertinoTheme.of(context).brightness ?? MediaQuery.of(context).platformBrightness;
     final isDark = brightness == Brightness.dark;
     final safeArea = MediaQuery.of(context).padding.bottom;
 
@@ -106,25 +98,29 @@ class _PremiumBottomNavigationState extends State<PremiumBottomNavigation>
     return ClipRRect(
       borderRadius: BorderRadius.circular(28),
       child: BackdropFilter(
-        filter: ImageFilter.blur(sigmaX: 35, sigmaY: 35),
-        child: Container(
+        filter: ImageFilter.blur(sigmaX: 50, sigmaY: 50),  // iOS 26: Premium blur
+        child: AnimatedContainer(
+          duration: const Duration(milliseconds: 300),  // Smooth transition
+          curve: Curves.easeInOut,
           decoration: BoxDecoration(
             gradient: _getNavGradient(isDark),
             border: Border.all(
-              color: isDark ? iOS18Colors.glassBorderDark : iOS18Colors.glassBorder,
-              width: 0.5,
+              color: isDark 
+                  ? Colors.white.withOpacity(0.30)   // 30% - Elegant glow
+                  : Colors.white.withOpacity(0.40),  // 40% - Refined edge
+              width: 1.5,  // iOS 26: Apple's standard
             ),
             borderRadius: BorderRadius.circular(28),
             boxShadow: [
               BoxShadow(
-                color: isDark ? Colors.black.withOpacity(0.4) : Colors.black.withOpacity(0.12),
-                blurRadius: 24,
-                offset: const Offset(0, 12),
+                color: isDark ? Colors.black.withOpacity(0.6) : Colors.black.withOpacity(0.20),
+                blurRadius: 32,
+                offset: const Offset(0, -8),  // Shadow going up
               ),
               BoxShadow(
-                color: isDark ? Colors.black.withOpacity(0.2) : Colors.black.withOpacity(0.06),
-                blurRadius: 48,
-                offset: const Offset(0, 24),
+                color: isDark ? Colors.black.withOpacity(0.3) : Colors.black.withOpacity(0.10),
+                blurRadius: 16,
+                offset: const Offset(0, -4),  // Subtle inner shadow
               ),
             ],
           ),
@@ -141,14 +137,18 @@ class _PremiumBottomNavigationState extends State<PremiumBottomNavigation>
         topRight: Radius.circular(28),
       ),
       child: BackdropFilter(
-        filter: ImageFilter.blur(sigmaX: 35, sigmaY: 35),
-        child: Container(
+        filter: ImageFilter.blur(sigmaX: 50, sigmaY: 50),  // iOS 26: Premium blur
+        child: AnimatedContainer(
+          duration: const Duration(milliseconds: 300),  // Smooth transition
+          curve: Curves.easeInOut,
           decoration: BoxDecoration(
             gradient: _getNavGradient(isDark),
             border: Border(
               top: BorderSide(
-                color: isDark ? iOS18Colors.glassBorderDark : iOS18Colors.glassBorder,
-                width: 0.5,
+                color: isDark
+                    ? Colors.white.withOpacity(0.30)  // 30% - Elegant edge
+                    : Colors.white.withOpacity(0.40),  // 40% - Refined edge
+                width: 1.5,  // iOS 26: Apple's standard
               ),
             ),
             borderRadius: const BorderRadius.only(
@@ -177,10 +177,7 @@ class _PremiumBottomNavigationState extends State<PremiumBottomNavigation>
             child: Container(
               padding: const EdgeInsets.symmetric(vertical: iOS18Spacing.sm),
               child: AnimatedBuilder(
-                animation: Listenable.merge([
-                  _scaleAnimations[index],
-                  _colorAnimations[index],
-                ]),
+                animation: _scaleAnimations[index],
                 builder: (context, child) {
                   return Column(
                     mainAxisSize: MainAxisSize.min,
@@ -203,29 +200,47 @@ class _PremiumBottomNavigationState extends State<PremiumBottomNavigation>
                                   ],
                                 )
                               : null,
-                          child: Icon(
-                            item.icon,
-                            size: 24,
-                            color: isSelected
-                                ? Colors.white
-                                : _colorAnimations[index].value ?? iOS18Colors.textSecondary,
+                          child: Builder(
+                            builder: (context) {
+                              final brightness = CupertinoTheme.of(context).brightness ?? Brightness.light;
+                              final isDark = brightness == Brightness.dark;
+                              
+                              return Icon(
+                                item.icon,
+                                size: 24,
+                                color: isSelected
+                                    ? Colors.white
+                                    : (isDark 
+                                        ? iOS18Colors.textSecondaryDark  // Bright gray for dark mode
+                                        : Colors.black.withOpacity(0.6)),  // Dark gray for light mode
+                              );
+                            },
                           ),
                         ),
                       ),
                       const SizedBox(height: iOS18Spacing.xs),
-                      AnimatedDefaultTextStyle(
-                        duration: const Duration(milliseconds: 200),
-                        style: iOS18Typography.caption2.copyWith(
-                          color: isSelected
-                              ? iOS18Colors.systemBlue
-                              : _colorAnimations[index].value ?? iOS18Colors.textSecondary,
-                          fontWeight: isSelected ? FontWeight.w600 : FontWeight.w400,
-                        ),
-                        child: Text(
-                          item.label,
-                          maxLines: 1,
-                          overflow: TextOverflow.ellipsis,
-                        ),
+                      Builder(
+                        builder: (context) {
+                          final brightness = CupertinoTheme.of(context).brightness ?? Brightness.light;
+                          final isDark = brightness == Brightness.dark;
+                          
+                          return AnimatedDefaultTextStyle(
+                            duration: const Duration(milliseconds: 200),
+                            style: iOS18Typography.caption2.copyWith(
+                              color: isSelected
+                                  ? iOS18Colors.systemBlue
+                                  : (isDark 
+                                      ? iOS18Colors.textSecondaryDark  // Bright for dark mode
+                                      : Colors.black.withOpacity(0.6)),  // Dark for light mode
+                              fontWeight: isSelected ? FontWeight.w600 : FontWeight.w400,
+                            ),
+                            child: Text(
+                              item.label,
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                            ),
+                          );
+                        },
                       ),
                     ],
                   );
@@ -240,22 +255,28 @@ class _PremiumBottomNavigationState extends State<PremiumBottomNavigation>
 
   LinearGradient _getNavGradient(bool isDark) {
     if (isDark) {
-      return const LinearGradient(
+      // iOS 26 Dark: Premium glass with excellent contrast
+      return LinearGradient(
         begin: Alignment.topCenter,
         end: Alignment.bottomCenter,
         colors: [
-          Color(0xD9000000), // 85% opacity
-          Color(0xB3000000), // 70% opacity
+          Colors.black.withOpacity(0.70), // 70% black - Rich glass, great contrast
+          Colors.black.withOpacity(0.60), // 60% black - Depth
+          Colors.black.withOpacity(0.50), // 50% black - Refined
         ],
+        stops: const [0.0, 0.5, 1.0],
       );
     } else {
-      return const LinearGradient(
+      // iOS 26 Light: Strong glass for perfect text readability
+      return LinearGradient(
         begin: Alignment.topCenter,
         end: Alignment.bottomCenter,
         colors: [
-          Color(0xD9FFFFFF), // 85% opacity
-          Color(0xB3FFFFFF), // 70% opacity
+          Colors.white.withOpacity(0.90), // 90% white - Excellent readability
+          Colors.white.withOpacity(0.85), // 85% white - Strong background
+          Colors.white.withOpacity(0.80), // 80% white - Refined
         ],
+        stops: const [0.0, 0.5, 1.0],
       );
     }
   }

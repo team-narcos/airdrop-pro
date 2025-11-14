@@ -1,0 +1,47 @@
+========================================
+  AirDrop Pro - Portable Version
+========================================
+
+CREATED FILES:
+--------------
+1. AirDropPro_AutoRun.exe (14.59 MB) - RECOMMENDED
+2. AirDropPro_Portable.exe (14.40 MB)
+
+
+HOW TO USE:
+-----------
+
+OPTION 1 - Auto Run (EASIEST):
+    1. Copy "AirDropPro_AutoRun.exe" to another laptop
+    2. Double-click it
+    3. It will extract and run automatically!
+    
+OPTION 2 - Manual:
+    1. Copy "AirDropPro_Portable.exe" to another laptop
+    2. Double-click to extract files
+    3. Run "airdrop_app.exe" manually
+
+
+TESTING BETWEEN TWO LAPTOPS:
+-----------------------------
+1. Make sure BOTH laptops are on the SAME WiFi network
+2. Run the app on BOTH laptops
+3. Each device will appear in the other's list
+4. Select files and send!
+5. Accept transfer on receiving laptop
+
+
+PORTS USED:
+-----------
+- TCP: 37777 (file transfer)
+- UDP: 37778 (device discovery)
+- P2P: 55817 (peer connections)
+
+
+TROUBLESHOOTING:
+----------------
+- If devices don't see each other, check Windows Firewall
+- Make sure both are on the same network
+- Wait 10-15 seconds for discovery
+
+========================================

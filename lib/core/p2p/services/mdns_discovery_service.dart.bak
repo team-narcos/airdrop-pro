@@ -1,0 +1,384 @@
+import 'dart:async';
+import 'dart:io';
+import 'package:flutter/foundation.dart';
+// import 'package:multicast_dns/multicast_dns.dart';  // Temporarily disabled for Windows
+import 'package:network_info_plus/network_info_plus.dart';
+import 'package:uuid/uuid.dart';
+import '../models/models.dart';
+
+// Stub class for Windows testing
+class MulticastDNS {
+  Future<void> start({int? listenPort, dynamic interfacesFactory}) async {}
+  void stop() {}
+  Stream<T> lookup<T>(dynamic query, {Duration? timeout}) async* {}
+}
+
+/// mDNS-based device discovery service
+/// 
+/// Broadcasts this device on the local network and discovers other AirDrop Pro devices
+/// Uses service type: _airdrop-pro._tcp.local
+class MDNSDiscoveryService {
+  static const String _serviceType = '_airdrop-pro';
+  static const String _protocol = '_tcp';
+  
+  final _uuid = const Uuid();
+  final _networkInfo = NetworkInfo();
+  
+  // Device ID - persistent across app lifecycle
+  late final String _deviceId;
+  String? _deviceName;
+  int? _servicePort;
+  
+  // mDNS client
+  MulticastDNS? _mdnsClient;
+  
+  // Discovered devices
+  final Map<String, P2PDevice> _devices = {};
+  final _devicesController = StreamController<List<P2PDevice>>.broadcast();
+  
+  // Discovery state
+  bool _isDiscovering = false;
+  Timer? _cleanupTimer;
+  Timer? _announcementTimer;
+  
+  MDNSDiscoveryService() {
+    _deviceId = _uuid.v4();
+  }
+  
+  /// Stream of discovered devices
+  Stream<List<P2PDevice>> get devicesStream => _devicesController.stream;
+  
+  /// Get list of currently discovered devices
+  List<P2PDevice> get devices => _devices.values.toList();
+  
+  /// Get active devices (seen within last 30 seconds)
+  List<P2PDevice> get activeDevices {
+    return devices.where((d) => d.isActive).toList();
+  }
+  
+  /// Check if currently discovering
+  bool get isDiscovering => _isDiscovering;
+  
+  /// Device ID for this device
+  String get deviceId => _deviceId;
+  
+  /// Initialize the service
+  Future<void> initialize({
+    required String deviceName,
+    required int port,
+  }) async {
+    _deviceName = deviceName;
+    _servicePort = port;
+    
+    debugPrint('[mDNS] Initialized with device: $deviceName, port: $port');
+  }
+  
+  /// Start discovering devices on the local network
+  Future<void> startDiscovery() async {
+    if (_isDiscovering) {
+      debugPrint('[mDNS] Discovery already running');
+      return;
+    }
+    
+    if (_deviceName == null || _servicePort == null) {
+      throw StateError('MDNSDiscoveryService not initialized. Call initialize() first.');
+    }
+    
+    try {
+      _isDiscovering = true;
+      
+      // Create mDNS client
+      _mdnsClient = MulticastDNS();
+      await _mdnsClient!.start();
+      
+      debugPrint('[mDNS] Started mDNS client');
+      
+      // Start listening for devices
+      _listenForDevices();
+      
+      // Announce ourselves periodically
+      await _announceService();
+      _announcementTimer = Timer.periodic(
+        const Duration(seconds: 10),
+        (_) => _announceService(),
+      );
+      
+      // Clean up stale devices
+      _cleanupTimer = Timer.periodic(
+        const Duration(seconds: 5),
+        (_) => _cleanupStaleDevices(),
+      );
+      
+      debugPrint('[mDNS] Discovery started successfully');
+    } catch (e) {
+      _isDiscovering = false;
+      debugPrint('[mDNS] Error starting discovery: $e');
+      rethrow;
+    }
+  }
+  
+  /// Stop discovering devices
+  Future<void> stopDiscovery() async {
+    if (!_isDiscovering) return;
+    
+    _isDiscovering = false;
+    
+    // Cancel timers
+    _announcementTimer?.cancel();
+    _announcementTimer = null;
+    
+    _cleanupTimer?.cancel();
+    _cleanupTimer = null;
+    
+    // Stop mDNS client
+    _mdnsClient?.stop();
+    _mdnsClient = null;
+    
+    // Clear devices
+    _devices.clear();
+    _devicesController.add([]);
+    
+    debugPrint('[mDNS] Discovery stopped');
+  }
+  
+  /// Announce this device on the network
+  Future<void> _announceService() async {
+    if (_mdnsClient == null || !_isDiscovering) return;
+    
+    try {
+      final localIP = await _getLocalIPAddress();
+      if (localIP == null) {
+        debugPrint('[mDNS] Cannot announce: no local IP');
+        return;
+      }
+      
+      final serviceName = '$_deviceId.$_serviceType.$_protocol.local';
+      final capabilities = DeviceCapabilities.defaults();
+      
+      debugPrint('[mDNS] Announcing service: $serviceName at $localIP:$_servicePort');
+      
+      // Note: multicast_dns package doesn't provide service announcement API
+      // In production, you would use platform-specific implementations:
+      // - iOS/macOS: Bonjour (NSNetService)
+      // - Android: NSD (Network Service Discovery)
+      // - Windows/Linux: Avahi
+      
+      // For now, we'll use PTR/SRV/TXT records directly
+      await _mdnsClient!.start(
+        listenPort: 5353,
+        interfacesFactory: (InternetAddress address) async => NetworkInterface.list(),
+      );
+      
+    } catch (e) {
+      debugPrint('[mDNS] Error announcing service: $e');
+    }
+  }
+  
+  /// Listen for other devices on the network
+  void _listenForDevices() {
+    if (_mdnsClient == null) return;
+    
+    // Query for AirDrop Pro services
+    const serviceQuery = '$_serviceType.$_protocol.local';
+    
+    // Start periodic queries
+    Timer.periodic(const Duration(seconds: 5), (timer) async {
+      if (!_isDiscovering || _mdnsClient == null) {
+        timer.cancel();
+        return;
+      }
+      
+      try {
+        debugPrint('[mDNS] Querying for services: $serviceQuery');
+        
+        await for (final PtrResourceRecord ptr in _mdnsClient!
+            .lookup<PtrResourceRecord>(
+          ResourceRecordQuery.serverPointer(serviceQuery),
+          timeout: const Duration(seconds: 2),
+        )) {
+          // Found a service, now get its details
+          await _resolveService(ptr.domainName);
+        }
+      } catch (e) {
+        debugPrint('[mDNS] Error querying services: $e');
+      }
+    });
+  }
+  
+  /// Resolve service details (SRV and TXT records)
+  Future<void> _resolveService(String serviceName) async {
+    if (_mdnsClient == null) return;
+    
+    try {
+      String? ipAddress;
+      int? port;
+      Map<String, String> txtData = {};
+      
+      // Get SRV record for port
+      await for (final SrvResourceRecord srv in _mdnsClient!
+          .lookup<SrvResourceRecord>(
+        ResourceRecordQuery.service(serviceName),
+        timeout: const Duration(seconds: 1),
+      )) {
+        port = srv.port;
+        
+        // Get A record for IP address
+        await for (final IPAddressResourceRecord ip in _mdnsClient!
+            .lookup<IPAddressResourceRecord>(
+          ResourceRecordQuery.addressIPv4(srv.target),
+          timeout: const Duration(seconds: 1),
+        )) {
+          ipAddress = ip.address.address;
+          break;
+        }
+        break;
+      }
+      
+      // Get TXT record for capabilities
+      await for (final TxtResourceRecord txt in _mdnsClient!
+          .lookup<TxtResourceRecord>(
+        ResourceRecordQuery.text(serviceName),
+        timeout: const Duration(seconds: 1),
+      )) {
+        txtData = _parseTxtRecords(txt.text);
+        break;
+      }
+      
+      // Create or update device
+      if (ipAddress != null && port != null) {
+        // Extract device ID from service name
+        final deviceId = serviceName.split('.').first;
+        
+        // Don't add ourselves
+        if (deviceId == _deviceId) {
+          return;
+        }
+        
+        // Extract device name from TXT records or use device ID
+        final deviceName = txtData['name'] ?? 'Device-${deviceId.substring(0, 8)}';
+        
+        final device = P2PDevice.fromMDNS(
+          id: deviceId,
+          name: deviceName,
+          ipAddress: ipAddress,
+          port: port,
+          txt: txtData,
+        );
+        
+        _addOrUpdateDevice(device);
+      }
+    } catch (e) {
+      debugPrint('[mDNS] Error resolving service $serviceName: $e');
+    }
+  }
+  
+  /// Parse TXT records from mDNS response
+  Map<String, String> _parseTxtRecords(String txtData) {
+    final records = <String, String>{};
+    
+    // TXT records are in format: key=value;key=value
+    final pairs = txtData.split(';');
+    for (final pair in pairs) {
+      final parts = pair.split('=');
+      if (parts.length == 2) {
+        records[parts[0].trim()] = parts[1].trim();
+      }
+    }
+    
+    return records;
+  }
+  
+  /// Add or update a discovered device
+  void _addOrUpdateDevice(P2PDevice device) {
+    final existing = _devices[device.id];
+    
+    if (existing == null) {
+      // New device discovered
+      _devices[device.id] = device;
+      debugPrint('[mDNS] Discovered new device: ${device.name} (${device.ipAddress})');
+    } else {
+      // Update existing device
+      _devices[device.id] = device.copyWith(
+        isConnected: existing.isConnected,
+        isTrusted: existing.isTrusted,
+      );
+    }
+    
+    // Notify listeners
+    _devicesController.add(devices);
+  }
+  
+  /// Remove a device from discovered list
+  void removeDevice(String deviceId) {
+    if (_devices.remove(deviceId) != null) {
+      debugPrint('[mDNS] Removed device: $deviceId');
+      _devicesController.add(devices);
+    }
+  }
+  
+  /// Clean up devices that haven't been seen recently
+  void _cleanupStaleDevices() {
+    final now = DateTime.now();
+    final toRemove = <String>[];
+    
+    for (final entry in _devices.entries) {
+      final age = now.difference(entry.value.lastSeen);
+      if (age.inSeconds > 30) {
+        toRemove.add(entry.key);
+      }
+    }
+    
+    if (toRemove.isNotEmpty) {
+      for (final id in toRemove) {
+        _devices.remove(id);
+      }
+      debugPrint('[mDNS] Cleaned up ${toRemove.length} stale devices');
+      _devicesController.add(devices);
+    }
+  }
+  
+  /// Get local IP address
+  Future<String?> _getLocalIPAddress() async {
+    try {
+      // Try to get WiFi IP first
+      final wifiIP = await _networkInfo.getWifiIP();
+      if (wifiIP != null && wifiIP.isNotEmpty) {
+        return wifiIP;
+      }
+      
+      // Fallback: get first non-loopback IPv4 address
+      final interfaces = await NetworkInterface.list(
+        type: InternetAddressType.IPv4,
+      );
+      
+      for (final interface in interfaces) {
+        for (final addr in interface.addresses) {
+          if (!addr.isLoopback && addr.type == InternetAddressType.IPv4) {
+            return addr.address;
+          }
+        }
+      }
+      
+      return null;
+    } catch (e) {
+      debugPrint('[mDNS] Error getting local IP: $e');
+      return null;
+    }
+  }
+  
+  /// Get current platform name
+  String _getPlatform() {
+    if (Platform.isWindows) return 'windows';
+    if (Platform.isMacOS) return 'macos';
+    if (Platform.isLinux) return 'linux';
+    if (Platform.isAndroid) return 'android';
+    if (Platform.isIOS) return 'ios';
+    return 'unknown';
+  }
+  
+  /// Dispose resources
+  void dispose() {
+    stopDiscovery();
+    _devicesController.close();
+  }
+}

@@ -1,6 +1,6 @@
 workflows:
   ios-workflow:
-    name: iOS AirDrop App
+    name: iOS AirDrop App (unsigned)
     instance_type: mac_mini_m1
     max_build_duration: 60
     
@@ -15,6 +15,11 @@ workflows:
         - $HOME/Library/Caches/CocoaPods
     
     scripts:
+      - name: Ensure iOS platform exists
+        script: |
+          if [ ! -d "ios" ]; then
+            flutter create --platforms=ios .
+          fi
       - name: Get Flutter packages
         script: flutter pub get
       
@@ -32,6 +37,54 @@ workflows:
       - airdrop-app-unsigned.ipa
       - build/ios/iphoneos/Runner.app
     
+    publishing:
+      email:
+        recipients:
+          - your-email@example.com  # Replace with your email
+
+  macos-workflow:
+    name: Build macOS APP and DMG
+    instance_type: mac_mini_m1
+    max_build_duration: 60
+
+    environment:
+      flutter: stable
+      xcode: latest
+
+    scripts:
+      - name: Ensure macOS platform exists
+        script: |
+          if [ ! -d "macos" ]; then
+            flutter create --platforms=macos .
+          fi
+      - name: Get Flutter packages
+        script: flutter pub get
+      - name: Build macOS (release)
+        script: flutter build macos --release
+      - name: Zip .app for download
+        script: |
+          APP_NAME="AirDrop Pro"
+          APP_PATH="build/macos/Build/Products/Release/${APP_NAME}.app"
+          if [ ! -d "$APP_PATH" ]; then
+            APP_PATH="build/macos/Build/Products/Release/Runner.app"
+            APP_NAME="Runner"
+          fi
+          ditto -c -k --sequesterRsrc --keepParent "$APP_PATH" "${APP_NAME}.zip"
+      - name: Create DMG (optional)
+        script: |
+          APP_NAME="AirDrop Pro"
+          APP_PATH="build/macos/Build/Products/Release/${APP_NAME}.app"
+          if [ ! -d "$APP_PATH" ]; then
+            APP_PATH="build/macos/Build/Products/Release/Runner.app"
+            APP_NAME="Runner"
+          fi
+          hdiutil create -volname "$APP_NAME" -srcfolder "$APP_PATH" -ov -format UDZO "${APP_NAME}.dmg"
+    artifacts:
+      - build/macos/Build/Products/Release/*.app
+      - "AirDrop Pro.zip"
+      - "AirDrop Pro.dmg"
+      - Runner.zip
+      - Runner.dmg
     publishing:
       email:
         recipients:

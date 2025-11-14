@@ -89,14 +89,22 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen>
             children: [
               SizedBox(height: iOS18Spacing.xl),
               
-              // Header
+              // Header with Theme Toggle
               FadeTransition(
                 opacity: _fadeAnimation,
-                child: Text(
-                  'Settings',
-                  style: iOS18Typography.largeTitle.copyWith(
-                    color: _getTextPrimary(context),
-                  ),
+                child: Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  crossAxisAlignment: CrossAxisAlignment.center,
+                  children: [
+                    Text(
+                      'Settings',
+                      style: iOS18Typography.largeTitle.copyWith(
+                        color: _getTextPrimary(context),
+                      ),
+                    ),
+                    // Sleek Theme Toggle Button
+                    _buildThemeToggle(settings),
+                  ],
                 ),
               ),
               
@@ -115,11 +123,6 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen>
               
               // AirDrop Settings
               _buildAirDropSettings(settings),
-              
-              SizedBox(height: iOS18Spacing.lg),
-              
-              // Appearance Settings
-              if (settings != null) _buildAppearanceSettings(settings.themeMode, ref),
               
               SizedBox(height: iOS18Spacing.lg),
               
@@ -459,36 +462,63 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen>
     );
   }
 
-  Widget _buildAppearanceSettings(ThemeMode themeMode, WidgetRef ref) {
-    return _buildSettingsSection(
-      title: 'Appearance',
-      children: [
-        Builder(
-          builder: (context) => Padding(
-            padding: EdgeInsets.symmetric(vertical: iOS18Spacing.sm),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  'Theme',
-                  style: iOS18Typography.bodyEmphasized.copyWith(
-                    color: _getTextPrimary(context),
-                  ),
-                ),
-                SizedBox(height: iOS18Spacing.md),
-                ThemeSelector(
-                  selectedMode: themeMode,
-                  onThemeChanged: (value) async {
-                    HapticFeedback.mediumImpact();
-                    final settingsService = ref.read(settingsServiceProvider);
-                    await settingsService.setThemeMode(value);
-                  },
-                ),
-              ],
-            ),
+  // Sleek Theme Toggle Button - iOS 26 Style
+  Widget _buildThemeToggle(AppSettings? settings) {
+    final currentMode = settings?.themeMode ?? ThemeMode.system;
+    final brightness = CupertinoTheme.of(context).brightness ?? Brightness.light;
+    final isDark = brightness == Brightness.dark;
+    
+    return GestureDetector(
+      onTap: () async {
+        HapticFeedback.mediumImpact();
+        final newMode = currentMode == ThemeMode.light 
+            ? ThemeMode.dark 
+            : ThemeMode.light;
+        final settingsService = ref.read(settingsServiceProvider);
+        await settingsService.setThemeMode(newMode);
+      },
+      child: AnimatedContainer(
+        duration: const Duration(milliseconds: 300),
+        curve: Curves.easeInOut,
+        padding: EdgeInsets.all(iOS18Spacing.sm),
+        decoration: BoxDecoration(
+          gradient: LinearGradient(
+            colors: currentMode == ThemeMode.light
+                ? [Color(0xFFFFD60A), Color(0xFFFF9500)]  // Sun gradient
+                : [Color(0xFF5856D6), Color(0xFF1C1C1E)],  // Moon gradient
           ),
+          borderRadius: BorderRadius.circular(iOS18Spacing.radiusSM),
+          boxShadow: [
+            BoxShadow(
+              color: (currentMode == ThemeMode.light 
+                  ? Color(0xFFFF9500) 
+                  : Color(0xFF5856D6)).withOpacity(0.4),
+              blurRadius: 12,
+              offset: Offset(0, 4),
+            ),
+          ],
         ),
-      ],
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(
+              currentMode == ThemeMode.light 
+                  ? CupertinoIcons.sun_max_fill 
+                  : CupertinoIcons.moon_fill,
+              color: Colors.white,
+              size: 20,
+            ),
+            SizedBox(width: iOS18Spacing.xs),
+            Text(
+              currentMode == ThemeMode.light ? 'Light' : 'Dark',
+              style: iOS18Typography.caption1.copyWith(
+                color: Colors.white,
+                fontWeight: FontWeight.w600,
+              ),
+            ),
+          ],
+        ),
+      ),
     );
   }
 
@@ -518,25 +548,23 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen>
           onTap: () => _showBandwidthDialog(settings?.bandwidthLimit ?? 0),
         ),
         _buildDivider(),
-        _buildSwitchItem(
-          title: 'File Compression',
-          subtitle: 'Compress files before transfer',
-          value: settings?.compressionEnabled ?? false,
-          onChanged: (value) async {
+        _buildNavigationItem(
+          title: 'Max File Size',
+          subtitle: 'Current: No Limit',
+          icon: CupertinoIcons.doc,
+          onTap: () {
             HapticFeedback.lightImpact();
-            final settingsService = ref.read(settingsServiceProvider);
-            await settingsService.setCompressionEnabled(value);
+            // TODO: Implement max file size dialog
           },
         ),
         _buildDivider(),
-        _buildSwitchItem(
-          title: 'Biometric Authentication',
-          subtitle: 'Require auth before transfers',
-          value: settings?.biometricEnabled ?? false,
-          onChanged: (value) async {
+        _buildNavigationItem(
+          title: 'Concurrent Connections',
+          subtitle: 'Max: 5 devices',
+          icon: CupertinoIcons.device_desktop,
+          onTap: () {
             HapticFeedback.lightImpact();
-            final settingsService = ref.read(settingsServiceProvider);
-            await settingsService.setBiometricEnabled(value);
+            // TODO: Implement concurrent connections dialog
           },
         ),
       ],
@@ -544,24 +572,44 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen>
   }
 
   Widget _buildNotificationSettings() {
+    final settingsAsync = ref.watch(appSettingsProvider);
+    final settings = settingsAsync.maybeWhen(
+      data: (s) => s,
+      orElse: () => null,
+    );
+    
     return _buildSettingsSection(
-      title: 'Notifications',
+      title: 'Preferences',
       children: [
         _buildSwitchItem(
-          title: 'Sound',
-          subtitle: 'Play sound for transfers',
-          value: true,
-          onChanged: (value) {
-            // Implement sound setting
+          title: 'Show Transfer Notifications',
+          subtitle: 'Display system notifications',
+          value: settings?.notificationsEnabled ?? true,
+          onChanged: (value) async {
+            HapticFeedback.lightImpact();
+            final settingsService = ref.read(settingsServiceProvider);
+            await settingsService.setNotificationsEnabled(value);
           },
         ),
         _buildDivider(),
         _buildSwitchItem(
-          title: 'Vibration',
-          subtitle: 'Vibrate on transfer completion',
-          value: true,
-          onChanged: (value) {
-            // Implement vibration setting
+          title: 'Auto-Cleanup Old Files',
+          subtitle: 'Delete files after 30 days',
+          value: settings?.autoCleanup ?? false,
+          onChanged: (value) async {
+            HapticFeedback.lightImpact();
+            final settingsService = ref.read(settingsServiceProvider);
+            await settingsService.setAutoCleanup(value);
+          },
+        ),
+        _buildDivider(),
+        _buildNavigationItem(
+          title: 'Storage Location',
+          subtitle: 'Downloads/AirDropPro',
+          icon: CupertinoIcons.folder,
+          onTap: () {
+            HapticFeedback.lightImpact();
+            // TODO: Implement storage location picker
           },
         ),
       ],

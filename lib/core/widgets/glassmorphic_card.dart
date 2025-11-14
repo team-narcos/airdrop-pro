@@ -49,7 +49,7 @@ class GlassmorphicCard extends StatelessWidget {
         child: ClipRRect(
           borderRadius: BorderRadius.circular(borderRadius),
           child: BackdropFilter(
-            filter: ImageFilter.blur(sigmaX: 20, sigmaY: 20),
+            filter: ImageFilter.blur(sigmaX: 40, sigmaY: 40),  // iOS 26: Very strong blur
             child: Container(
               decoration: BoxDecoration(
                 gradient: gradient ?? _defaultGradient(effectiveDark),
@@ -71,41 +71,77 @@ class GlassmorphicCard extends StatelessWidget {
 
   LinearGradient _defaultGradient(bool isDark) {
     if (isDark) {
-      return const LinearGradient(
+      // iOS 26 Dark: Premium glass with excellent contrast
+      return LinearGradient(
         begin: Alignment.topLeft,
         end: Alignment.bottomRight,
         colors: [
-          Color(0x30FFFFFF),
-          Color(0x20FFFFFF),
-          Color(0x15FFFFFF),
-          Color(0x10FFFFFF),
+          Colors.white.withOpacity(0.15),  // 15% top - visible glass
+          Colors.white.withOpacity(0.10),  // 10% middle
+          Colors.white.withOpacity(0.07),  // 7% lower
+          Colors.white.withOpacity(0.04),  // 4% bottom - fade
         ],
-        stops: [0.0, 0.3, 0.7, 1.0],
+        stops: const [0.0, 0.3, 0.7, 1.0],
       );
     } else {
-      return const LinearGradient(
+      // iOS 26 Light: Balanced glass - text readable, glass visible
+      return LinearGradient(
         begin: Alignment.topLeft,
         end: Alignment.bottomRight,
         colors: [
-          Color(0x40FFFFFF),
-          Color(0x30FFFFFF),
-          Color(0x20FFFFFF),
-          Color(0x15FFFFFF),
+          Colors.white.withOpacity(0.70),  // 70% top - readable text
+          Colors.white.withOpacity(0.60),  // 60% middle
+          Colors.white.withOpacity(0.50),  // 50% lower
+          Colors.white.withOpacity(0.40),  // 40% bottom - gradient
         ],
-        stops: [0.0, 0.3, 0.7, 1.0],
+        stops: const [0.0, 0.3, 0.7, 1.0],
       );
     }
   }
 
   Border _defaultBorder(bool isDark) {
+    // iOS 26: Premium luminous borders with Apple polish
     return Border.all(
-      color: isDark ? iOS18Colors.glassBorderDark : iOS18Colors.glassBorder,
-      width: 0.5,
+      color: isDark 
+          ? Colors.white.withOpacity(0.25)   // 25% white - elegant glow
+          : Colors.white.withOpacity(0.45),  // 45% white - refined shimmer
+      width: 1.5,  // iOS 26: Apple's refined thickness
     );
   }
 
   List<BoxShadow> _defaultShadows(bool isDark) {
-    return isDark ? iOS18Shadows.glassShadowsDark : iOS18Shadows.glassShadows;
+    // iOS 26: DRAMATIC shadows for visible depth
+    if (isDark) {
+      return [
+        BoxShadow(
+          color: Colors.black.withOpacity(0.6),  // Strong shadow
+          blurRadius: 40,
+          spreadRadius: 0,
+          offset: const Offset(0, 20),
+        ),
+        BoxShadow(
+          color: Colors.black.withOpacity(0.4),
+          blurRadius: 20,
+          spreadRadius: 0,
+          offset: const Offset(0, 10),
+        ),
+      ];
+    } else {
+      return [
+        BoxShadow(
+          color: Colors.black.withOpacity(0.15),  // Visible shadow
+          blurRadius: 30,
+          spreadRadius: 0,
+          offset: const Offset(0, 15),
+        ),
+        BoxShadow(
+          color: Colors.black.withOpacity(0.08),
+          blurRadius: 15,
+          spreadRadius: 0,
+          offset: const Offset(0, 8),
+        ),
+      ];
+    }
   }
 }
 
@@ -188,33 +224,35 @@ class _PulsingGlowCardState extends State<PulsingGlowCard>
               borderRadius: BorderRadius.circular(widget.borderRadius),
               boxShadow: [
                 BoxShadow(
-                  color: widget.glowGradient.colors.first.withOpacity(_animation.value * 0.4),
-                  blurRadius: 30 * _animation.value,
-                  spreadRadius: 5 * _animation.value,
+                  color: widget.glowGradient.colors.first.withOpacity(_animation.value * 0.35),
+                  blurRadius: 24 * _animation.value,
+                  spreadRadius: 0,
+                  offset: Offset(0, 6 * _animation.value),
                 ),
                 BoxShadow(
-                  color: widget.glowGradient.colors.last.withOpacity(_animation.value * 0.2),
-                  blurRadius: 60 * _animation.value,
-                  spreadRadius: 10 * _animation.value,
+                  color: widget.glowGradient.colors.last.withOpacity(_animation.value * 0.25),
+                  blurRadius: 48 * _animation.value,
+                  spreadRadius: 0,
+                  offset: Offset(0, 12 * _animation.value),
                 ),
               ],
             ),
             child: ClipRRect(
               borderRadius: BorderRadius.circular(widget.borderRadius),
               child: BackdropFilter(
-                filter: ImageFilter.blur(sigmaX: 15, sigmaY: 15),
+                filter: ImageFilter.blur(sigmaX: 40, sigmaY: 40),  // iOS 26: Strong blur
                 child: Container(
                   decoration: BoxDecoration(
                     gradient: LinearGradient(
-                      transform: GradientRotation(_animation.value * 0.2),
+                      transform: GradientRotation(_animation.value * 0.15),
                       colors: widget.glowGradient.colors,
                       stops: widget.glowGradient.stops,
                       begin: widget.glowGradient.begin ?? Alignment.centerLeft,
                       end: widget.glowGradient.end ?? Alignment.centerRight,
                     ),
                     border: Border.all(
-                      color: Colors.white.withOpacity(0.3),
-                      width: 1.5,
+                      color: const Color(0x52FFFFFF),  // 32% white - refined glow
+                      width: 1.2,  // iOS 26: Refined thickness
                     ),
                     borderRadius: BorderRadius.circular(widget.borderRadius),
                   ),

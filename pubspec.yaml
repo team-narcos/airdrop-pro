@@ -94,7 +94,7 @@ dependencies:
   # State Management Enhancement
   hooks_riverpod: ^2.5.2
   # Animations
-  rive: ^0.13.15
+  # rive: ^0.13.15  # Temporarily disabled - ClangCL build issue
   shimmer: ^3.0.0
   # Video Player
   video_player: ^2.9.2

@@ -46,15 +46,15 @@ class iOS18Colors {
   static const glassBorderDark = Color(0x30FFFFFF);  // Better contrast
   static const glassShadowDark = Color(0x50000000);  // Deeper shadows
 
-  // Text colors - Light mode
-  static const textPrimary = Color(0xFF000000);
-  static const textSecondary = Color(0xFF8E8E93);
-  static const textTertiary = Color(0xFFC7C7CC);
+  // iOS 26 Text colors - Light mode (strong contrast for readability)
+  static const textPrimary = Color(0xFF000000);       // Pure black - maximum contrast
+  static const textSecondary = Color(0xFF3C3C43);     // Dark gray - excellent readability
+  static const textTertiary = Color(0xFF8E8E93);      // Medium gray
   
-  // Text colors - Dark mode (much brighter for better visibility)
-  static const textPrimaryDark = Color(0xFFFFFFFF);
-  static const textSecondaryDark = Color(0xFFE5E5E7);  // Much brighter!
-  static const textTertiaryDark = Color(0xFFA8A8A8);   // Much brighter!
+  // iOS 26 Text colors - Dark mode (Apple's refined brightness)
+  static const textPrimaryDark = Color(0xFFFFFFFF);   // Pure white - maximum contrast
+  static const textSecondaryDark = Color(0xFFEBEBF5); // Very bright - excellent readability
+  static const textTertiaryDark = Color(0xFFC7C7CC);  // Bright gray
 
   // Gradient definitions
   static const LinearGradient airDropGradient = LinearGradient(
@@ -255,35 +255,47 @@ class iOS18Spacing {
 }
 
 class iOS18Shadows {
-  // Premium glassmorphism shadows - Light mode
+  // iOS 26 Light - Premium glass shadows with subtle depth
   static const List<BoxShadow> glassShadows = [
     BoxShadow(
-      color: Color(0x14000000),  // Softer primary shadow
-      blurRadius: 30,
+      color: Color(0x08000000),  // 3% black - refined primary shadow
+      blurRadius: 32,
+      spreadRadius: 0,
+      offset: Offset(0, 6),
+    ),
+    BoxShadow(
+      color: Color(0x05000000),  // 2% black - soft ambient shadow
+      blurRadius: 16,
+      spreadRadius: -1,
+      offset: Offset(0, 3),
+    ),
+    BoxShadow(
+      color: Color(0x0A000000),  // 4% black - edge definition
+      blurRadius: 48,
       spreadRadius: 0,
       offset: Offset(0, 10),
     ),
-    BoxShadow(
-      color: Color(0x08000000),  // Subtle secondary shadow
-      blurRadius: 12,
-      spreadRadius: -2,
-      offset: Offset(0, 4),
-    ),
   ];
 
-  // Premium glassmorphism shadows - Dark mode
+  // iOS 26 Dark - Premium glass shadows with rich depth
   static const List<BoxShadow> glassShadowsDark = [
     BoxShadow(
-      color: Color(0x60000000),  // Deeper shadows for depth
+      color: Color(0x40000000),  // 25% black - refined depth
       blurRadius: 40,
       spreadRadius: 0,
-      offset: Offset(0, 16),
+      offset: Offset(0, 12),
     ),
     BoxShadow(
-      color: Color(0x30000000),  // Layered shadow
-      blurRadius: 16,
-      spreadRadius: -4,
-      offset: Offset(0, 8),
+      color: Color(0x20000000),  // 12% black - layered shadow
+      blurRadius: 20,
+      spreadRadius: -2,
+      offset: Offset(0, 6),
+    ),
+    BoxShadow(
+      color: Color(0x33000000),  // 20% black - ambient depth
+      blurRadius: 60,
+      spreadRadius: 0,
+      offset: Offset(0, 16),
     ),
   ];
 

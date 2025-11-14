@@ -1,7 +1,7 @@
 import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
 
-/// Premium iOS 18 static background with proper dark mode support
+/// iOS 26 Premium animated background with smooth transitions
 class AnimatedGradientBackground extends StatelessWidget {
   final Widget child;
   
@@ -13,7 +13,9 @@ class AnimatedGradientBackground extends StatelessWidget {
     final brightness = CupertinoTheme.of(context).brightness ?? Brightness.light;
     final isDark = brightness == Brightness.dark;
     
-    return Container(
+    return AnimatedContainer(
+      duration: const Duration(milliseconds: 400),  // iOS 26: Smooth transition
+      curve: Curves.easeInOut,  // Apple's signature curve
       decoration: BoxDecoration(
         gradient: LinearGradient(
           begin: Alignment.topCenter,
@@ -26,19 +28,19 @@ class AnimatedGradientBackground extends StatelessWidget {
     );
   }
   
-  // Premium light mode gradient - subtle, clean iOS 18 style
+  // iOS 26 Light - Apple's refined gradient (visible but sophisticated)
   static const List<Color> _lightGradient = [
-    Color(0xFFF8F9FA),  // Soft white
-    Color(0xFFF5F7FA),  // Light blue-gray
-    Color(0xFFF0F3F8),  // Subtle blue tint
-    Color(0xFFEFF2F7),  // Delicate gradient end
+    Color(0xFFEEF2FF),  // Soft indigo-white
+    Color(0xFFF5F3FF),  // Gentle purple-white
+    Color(0xFFFFF1F2),  // Subtle rose-white
+    Color(0xFFEFF6FF),  // Soft blue-white
   ];
   
-  // Premium dark mode gradient - deep, rich blacks with subtle blue tint
+  // iOS 26 Dark - Apple's premium deep gradient
   static const List<Color> _darkGradient = [
-    Color(0xFF000000),  // Pure black
-    Color(0xFF0A0A0F),  // Deep black with subtle blue
-    Color(0xFF0F0F14),  // Slightly lighter
-    Color(0xFF1A1A1F),  // Subtle transition
+    Color(0xFF000000),  // Pure black (Apple's signature)
+    Color(0xFF0A0D1E),  // Deep midnight blue
+    Color(0xFF0F0A1C),  // Rich purple-black
+    Color(0xFF0D0F1A),  // Deep blue-black
   ];
 }
